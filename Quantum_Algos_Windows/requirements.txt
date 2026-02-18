@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+cryptography
+liboqs-python
+python-dotenv

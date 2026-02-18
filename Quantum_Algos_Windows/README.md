@@ -93,7 +93,7 @@ Once the key is established:
 | :------------------- | :------------------------------------------------------------- |
 | `server.py`          | The main heart. Handles Key Gen, Handshake, and API endpoints. |
 | `phase1.py`          | Core Cryptography (Kyber/Dilithium via liboqs).                |
-| `phase3.py`          | AES-GCM Encryption Logic.                                      |
+| `phase2.py`          | AES-GCM Encryption Logic.                                      |
 | `send_message.py`    | User-friendly script to send chats.                            |
 | `receive_message.py` | User-friendly script to read chats.                            |
 
@@ -146,7 +146,7 @@ Here is exactly what happens when you run the system, step-by-step:
 - **File:** `send_message.py` -> `server.py`
 - **Function:** `send_chat(payload)` (Endpoint: `/chat/send`)
 - **Action:**
-  1.  Encrypts message using `phase3.SecureMessenger.encrypt()`.
+  1.  Encrypts message using `phase2.SecureMessenger.encrypt()`.
   2.  POSTs encrypted data to Peer's `/chat/receive`.
 
 ### 5️⃣ Receiving Messages
@@ -154,5 +154,5 @@ Here is exactly what happens when you run the system, step-by-step:
 - **File:** `server.py` -> `receive_message.py`
 - **Function:** `receive_chat(payload)` (Endpoint: `/chat/receive`)
 - **Action:**
-  1.  Decrypts message using `phase3.SecureMessenger.decrypt()`.
+  1.  Decrypts message using `phase2.SecureMessenger.decrypt()`.
   2.  Stores it in `RECEIVED_MESSAGES` list.

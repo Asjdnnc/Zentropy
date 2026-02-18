@@ -8,7 +8,7 @@ import fastapi
 import uvicorn
 import threading
 import phase1  # Import our refactored module
-import phase3  # Import AES logic
+import phase2  # Import AES logic
 import oqs     # Import oqs library directly
 
 # GLOBAL SHARED SECRET (The Result of Handshake)
@@ -232,7 +232,7 @@ def send_chat(payload: dict = Body(...)):
     
     try:
         # 1. Encrypt
-        messenger = phase3.SecureMessenger(CURRENT_SHARED_SECRET)
+        messenger = phase2.SecureMessenger(CURRENT_SHARED_SECRET)
         nonce, ciphertext = messenger.encrypt(msg)
         
         # 2. Send to Peer
@@ -266,7 +266,7 @@ def receive_chat(payload: dict = Body(...), request: Request = None):
         ciphertext = payload['ciphertext']
         sender = request.client.host
         
-        messenger = phase3.SecureMessenger(CURRENT_SHARED_SECRET)
+        messenger = phase2.SecureMessenger(CURRENT_SHARED_SECRET)
         plaintext = messenger.decrypt(nonce, ciphertext)
         
         # Store for retrieval
@@ -309,7 +309,7 @@ def chat_input_loop():
             if not msg: continue
             
             # Encrypt
-            messenger = phase3.SecureMessenger(CURRENT_SHARED_SECRET)
+            messenger = phase2.SecureMessenger(CURRENT_SHARED_SECRET)
             nonce, ciphertext = messenger.encrypt(msg)
             
             # Send

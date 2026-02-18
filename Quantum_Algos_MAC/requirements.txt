@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+requests
+cryptography
+python-dotenv
+opencv-python

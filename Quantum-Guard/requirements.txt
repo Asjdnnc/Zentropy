@@ -1,0 +1,41 @@
+# QuantumGuard Python Dependencies
+# =================================
+# Install: pip install -r requirements.txt
+
+# Phase 1: Post-Quantum Cryptography
+liboqs-python>=0.10.0
+
+# Phase 4: Web Framework (API server)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Starknet integration (Phase 3 ↔ Phase 4 bridge)
+starknet-py>=0.29.0
+
+# Cryptography (AES-GCM for symmetric encryption)
+cryptography>=41.0.0
+
+# HTTP client
+requests>=2.31.0
+httpx>=0.25.0
+
+# Database (v2 multi-user)
+asyncpg>=0.29.0
+aiosqlite>=0.19.0
+
+# BIP-39 seed phrases
+mnemonic>=0.21
+
+# Data validation
+pydantic>=2.5.0
+
+# Environment configuration
+python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Code formatting
+black>=23.12.0

@@ -1,0 +1,38 @@
+# QuantumGuard build artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Rust
+zk_prover/target/
+
+# Cairo
+starknet_contracts/target/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Keys (NEVER commit private keys)
+*.json
+!Scarb.toml
+!requirements.txt
+!package.json
+
+# Environment (contains secrets)
+.env
+!.env.example
+
+# Database
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db

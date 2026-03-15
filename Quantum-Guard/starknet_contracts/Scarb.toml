@@ -1,0 +1,15 @@
+[package]
+name = "quantum_guard_contract"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = ">=2.9.1"
+
+[dev-dependencies]
+cairo_test = "2.15.2"
+
+[[target.starknet-contract]]
+
+[scripts]
+test = "scarb cairo-test"

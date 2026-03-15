@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --neon-cyan: #00f3ff;
+  --neon-purple: #bc13fe;
+  --neon-green: #0aff0a;
+  --bg-dark: #050510;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(255, 255, 255, 0.1);
+}
+
+@theme {
+  --font-inter: "Inter", sans-serif;
+  --font-orbitron: "Orbitron", sans-serif;
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-purple: var(--neon-purple);
+  --color-neon-green: var(--neon-green);
+  --color-bg-dark: var(--bg-dark);
+}
+
+@layer base {
+  body {
+    background-color: var(--bg-dark);
+    color: #e0e0e0;
+    font-family: "Inter", sans-serif;
+    background-image:
+      radial-gradient(
+        circle at 15% 50%,
+        rgba(188, 19, 254, 0.08),
+        transparent 25%
+      ),
+      radial-gradient(
+        circle at 85% 30%,
+        rgba(0, 243, 255, 0.08),
+        transparent 25%
+      );
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  .neon-text-cyan {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 5px rgba(0, 243, 255, 0.5);
+  }
+
+  .neon-text-purple {
+    color: var(--neon-purple);
+    text-shadow: 0 0 5px rgba(188, 19, 254, 0.5);
+  }
+
+  .neon-border-cyan {
+    border-color: var(--neon-cyan);
+    box-shadow:
+      0 0 10px rgba(0, 243, 255, 0.3),
+      inset 0 0 5px rgba(0, 243, 255, 0.1);
+  }
+}

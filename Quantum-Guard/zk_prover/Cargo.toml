@@ -1,0 +1,37 @@
+[package]
+name = "quantum_prover"
+version = "0.1.0"
+edition = "2021"
+description = "Off-chain ML-DSA-44 signature verifier for QuantumGuard"
+
+[dependencies]
+# Post-quantum crypto — uses vendored liboqs (auto-builds from source)
+oqs = { version = "0.11", features = ["sigs"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Hashing (SHA-256 for proof commitments)
+sha2 = "0.10"
+
+# CLI argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Base64 encoding/decoding (for interop with Python)
+base64 = "0.22"
+
+# HTTP server for prover API mode
+actix-web = "4"
+actix-rt = "2"
+tokio = { version = "1", features = ["full"] }
+
+[[bin]]
+name = "prover"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

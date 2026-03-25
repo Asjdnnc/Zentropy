@@ -5,6 +5,9 @@ import {
   getWalletBalance,
   getContractStatus,
   getTransactionHistory,
+  getWalletInfo,
+  getActiveUserId,
+  setActiveUserId,
 } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Card from "../components/Card";
@@ -27,30 +30,62 @@ export default function Dashboard() {
           listWallets().catch(() => null),
         ]);
         if (healthRes) setHealth(healthRes.data);
-        const walletList = walletsRes?.data?.wallets || [];
-        setWallets(walletList);
+        const users = walletsRes?.data?.users || walletsRes?.data?.wallets || [];
+        const walletList = await Promise.all(
+          users.map(async (u) => {
+            const userId = u.user_id || u.label;
+            if (!userId) return null;
+            try {
+              const walletRes = await getWalletInfo(userId);
+              return {
+                label: userId,
+                user_id: userId,
+                username: u.username || u.email || userId,
+                ...walletRes.data,
+              };
+            } catch {
+              return {
+                label: userId,
+                user_id: userId,
+                username: u.username || u.email || userId,
+                contract_address: null,
+                deployment_status: "unknown",
+              };
+            }
+          })
+        );
+        const normalizedWallets = walletList.filter(Boolean);
+        setWallets(normalizedWallets);
+
+        const persistedUserId = getActiveUserId();
+        const defaultUserId = persistedUserId || normalizedWallets[0]?.user_id;
+        if (!persistedUserId && defaultUserId) {
+          setActiveUserId(defaultUserId);
+        }
 
         const [contractRes, txRes] = await Promise.all([
           getContractStatus().catch(() => null),
-          getTransactionHistory({ limit: 1 }).catch(() => null),
+          defaultUserId
+            ? getTransactionHistory({ user_id: defaultUserId, limit: 1 }).catch(() => null)
+            : Promise.resolve(null),
         ]);
         if (contractRes) setContract(contractRes.data);
         if (txRes) setTxCount(txRes.data.total || 0);
 
         // Fetch balances for deployed wallets
-        const deployed = walletList.filter(
+        const deployed = normalizedWallets.filter(
           (w) => w.contract_address && w.deployment_status === "deployed"
         );
         const balanceResults = await Promise.all(
           deployed.map((w) =>
-            getWalletBalance(w.label)
-              .then((r) => ({ label: w.label, data: r.data }))
+            getWalletBalance(w.user_id)
+              .then((r) => ({ user_id: w.user_id, data: r.data }))
               .catch(() => null)
           )
         );
         const b = {};
         balanceResults.forEach((r) => {
-          if (r) b[r.label] = r.data;
+          if (r) b[r.user_id] = r.data;
         });
         setBalances(b);
       } catch (err) {
@@ -81,7 +116,7 @@ export default function Dashboard() {
 
   // Calculate total portfolio balance
   const totalBalance = Object.values(balances).reduce((sum, b) => {
-    const val = parseFloat(b?.balance_display || "0");
+    const val = parseFloat(b?.balance_display || b?.balance_strk || "0");
     return sum + (isNaN(val) ? 0 : val);
   }, 0);
 
@@ -202,9 +237,9 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {wallets.map((w) => (
               <WalletCard
-                key={w.label}
+                key={w.user_id}
                 wallet={w}
-                balance={balances[w.label]}
+                balance={balances[w.user_id]}
               />
             ))}
           </div>

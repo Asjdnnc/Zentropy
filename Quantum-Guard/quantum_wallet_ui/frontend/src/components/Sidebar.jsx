@@ -1,7 +1,10 @@
 import React from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
+import { clearApiKey, clearActiveUserId } from "../api/client";
 
 export default function Sidebar() {
+  const navigate = useNavigate();
+
   const linkClass = ({ isActive }) =>
     `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-300 ${isActive
       ? "bg-gradient-to-r from-indigo-900/50 to-purple-900/50 text-white border-l-2 border-neon-cyan shadow-[inset_0_0_20px_rgba(0,243,255,0.1)]"
@@ -10,7 +13,7 @@ export default function Sidebar() {
 
   const navItems = [
     {
-      to: "/",
+      to: "/dashboard",
       label: "Dashboard",
       icon: (
         <svg
@@ -160,6 +163,17 @@ export default function Sidebar() {
             <span className="text-xs text-gray-400">System Online</span>
           </div>
           <div className="text-xs text-gray-500 font-mono">v0.1.0-beta</div>
+          <button
+            type="button"
+            onClick={() => {
+              clearApiKey();
+              clearActiveUserId();
+              navigate("/login");
+            }}
+            className="mt-3 w-full text-xs px-3 py-2 rounded border border-white/15 text-gray-300 hover:text-white hover:bg-white/10"
+          >
+            Logout
+          </button>
         </div>
       </div>
     </aside>

@@ -15,20 +15,24 @@ starknet_contracts/target/
 # Virtual environments
 .venv/
 venv/
+myenv/
+
+# Local machine credential/state folders
+.starkli/
 
 # IDE
 .vscode/
 .idea/
 
-# Keys (NEVER commit private keys)
-*.json
-!Scarb.toml
-!requirements.txt
-!package.json
-
 # Environment (contains secrets)
 .env
+.env.*
 !.env.example
+!.env.production.example
+
+# Frontend local artifacts
+quantum_wallet_ui/frontend/node_modules/
+quantum_wallet_ui/frontend/dist/
 
 # Database
 *.db

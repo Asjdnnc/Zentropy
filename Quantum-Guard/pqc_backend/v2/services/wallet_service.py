@@ -14,11 +14,17 @@ Also handles wallet queries, balance lookups, and key rotation.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
+import json
 import logging
+import os
+import re
 import secrets
+import subprocess
 import time
+import urllib.request
 import uuid
 from typing import Optional
 
@@ -45,25 +51,30 @@ class WalletService:
 
     # ── Organization ──────────────────────────────────────────
 
-    async def create_organization(self, conn, org_name: str) -> dict:
+    async def create_organization(self, conn, org_name: str, admin_email: str) -> dict:
         """Create a new organization with a unique API key."""
         org_id = str(uuid.uuid4())
         api_key = secrets.token_urlsafe(48)
         now = time.time()
 
         await conn.execute(
-            """INSERT INTO organizations (org_id, org_name, api_key, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5)""",
-            org_id, org_name, api_key, now, now,
+            """INSERT INTO organizations (org_id, org_name, admin_email, api_key, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6)""",
+            org_id, org_name, admin_email, api_key, now, now,
         )
 
         logger.info("Organization created: %s (%s)", org_name, org_id)
-        return {"org_id": org_id, "org_name": org_name, "api_key": api_key}
+        return {
+            "org_id": org_id,
+            "org_name": org_name,
+            "admin_email": admin_email,
+            "api_key": api_key,
+        }
 
     async def get_organization_by_api_key(self, conn, api_key: str) -> Optional[dict]:
         """Look up organization by API key (for auth)."""
         return await conn.fetchrow(
-            "SELECT org_id, org_name, api_key, created_at FROM organizations WHERE api_key = $1",
+            "SELECT org_id, org_name, admin_email, api_key, created_at FROM organizations WHERE api_key = $1",
             api_key,
         )
 
@@ -293,6 +304,136 @@ class WalletService:
         )
 
     # ── Balance ───────────────────────────────────────────────
+
+    async def refresh_account_balance_from_chain(
+        self,
+        conn,
+        account_address: str,
+        *,
+        deployed: bool = True,
+    ) -> Optional[str]:
+        """Best-effort balance sync from Starknet STRK contract into accounts.balance_wei."""
+        if not deployed or not account_address:
+            return None
+
+        balance_wei = await asyncio.to_thread(self._query_strk_balance_wei, account_address)
+        if balance_wei is None:
+            return None
+
+        now = time.time()
+        await conn.execute(
+            """UPDATE accounts
+               SET balance_wei = $1,
+                   updated_at = $2
+               WHERE account_address = $3""",
+            balance_wei,
+            now,
+            account_address,
+        )
+        return balance_wei
+
+    def _query_strk_balance_wei(self, account_address: str) -> Optional[str]:
+        """Query STRK balance (starkli first, JSON-RPC fallback)."""
+        rpc = os.environ.get(
+            "STARKNET_RPC",
+            "https://free-rpc.nethermind.io/sepolia-juno/v0_7",
+        )
+        strk_token = os.environ.get(
+            "STRK_TOKEN_ADDRESS",
+            "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
+        )
+
+        for entrypoint in ("balance_of", "balanceOf"):
+            try:
+                result = subprocess.run(
+                    ["starkli", "call", strk_token, entrypoint, account_address, "--rpc", rpc],
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                break
+
+            if result.returncode != 0:
+                continue
+
+            parsed = self._parse_starkli_u256_output("\n".join([result.stdout or "", result.stderr or ""]))
+            if parsed is not None:
+                return parsed
+
+        return self._query_strk_balance_wei_via_rpc(rpc, strk_token, account_address)
+
+    def _query_strk_balance_wei_via_rpc(
+        self,
+        rpc: str,
+        strk_token: str,
+        account_address: str,
+    ) -> Optional[str]:
+        selectors = [
+            # starkli selector balance_of
+            "0x035a73cd311a05d46deda634c5ee045db92f811b4e74bca4437fcb5302b7af33",
+            # starkli selector balanceOf
+            "0x02e4263afad30923c891518314c3c95dbe830a16874e8abc5777a9a20b54c76e",
+        ]
+
+        for selector in selectors:
+            payload = {
+                "jsonrpc": "2.0",
+                "method": "starknet_call",
+                "params": [
+                    {
+                        "contract_address": strk_token,
+                        "entry_point_selector": selector,
+                        "calldata": [account_address],
+                    },
+                    "latest",
+                ],
+                "id": 1,
+            }
+
+            req = urllib.request.Request(
+                rpc,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    raw = resp.read().decode("utf-8")
+                body = json.loads(raw)
+            except Exception:
+                continue
+
+            if not isinstance(body, dict) or body.get("error"):
+                continue
+
+            result = body.get("result")
+            if not isinstance(result, list) or not result:
+                continue
+
+            if len(result) == 1:
+                return str(int(result[0], 16))
+
+            low = int(result[0], 16)
+            high = int(result[1], 16)
+            return str(low + (high << 128))
+
+        return None
+
+    @staticmethod
+    def _parse_starkli_u256_output(output: str) -> Optional[str]:
+        """Parse starkli call output for felt/u256 return values."""
+        felts = re.findall(r"0x[0-9a-fA-F]+", output or "")
+        if not felts:
+            return None
+
+        if len(felts) == 1:
+            return str(int(felts[0], 16))
+
+        low = int(felts[0], 16)
+        high = int(felts[1], 16)
+        return str(low + (high << 128))
 
     async def update_balance_cache(
         self,

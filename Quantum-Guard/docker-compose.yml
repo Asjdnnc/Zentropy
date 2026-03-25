@@ -1,0 +1,24 @@
+services:
+  quantum-guard-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quantum-guard-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      PROVER_PORT: 8001
+      DB_PATH: /data/quantumguard.db
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///data/quantumguard_v2.db}
+      MERKLE_STORAGE_DIR: /data/merkle_batches
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - quantumguard_data:/data
+
+volumes:
+  quantumguard_data:

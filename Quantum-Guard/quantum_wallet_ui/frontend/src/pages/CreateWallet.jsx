@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createWallet, listWallets, getWalletInfo, getWalletBalance } from "../api/client";
+import { createWallet, listWallets, getWalletInfo, getWalletBalance, getDeploymentStatus } from "../api/client";
 import { useWallet } from "../context/WalletContext";
 import WalletCard from "../components/WalletCard";
 import Card from "../components/Card";
 import Button from "../components/Button";
+
+const DEBUG_NS = "[CreateWallet]";
 
 export default function CreateWallet() {
     const [label, setLabel] = useState("");
@@ -23,30 +25,118 @@ export default function CreateWallet() {
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
 
+    function debugLog(step, payload = null) {
+        if (payload !== null) {
+            console.log(`${DEBUG_NS} ${step}`, payload);
+            return;
+        }
+        console.log(`${DEBUG_NS} ${step}`);
+    }
+
+    function debugError(step, err) {
+        console.error(`${DEBUG_NS} ${step}`, {
+            message: err?.message,
+            readableMessage: err?.readableMessage,
+            status: err?.response?.status,
+            detail: err?.response?.data?.detail,
+            data: err?.response?.data,
+        });
+    }
+
     useEffect(() => {
         fetchWallets();
         return () => stopCamera();
     }, []);
 
     async function fetchWallets() {
+        debugLog("fetchWallets:start");
         try {
             const res = await listWallets();
-            const w = res.data.wallets || [];
-            setWallets(w);
-            const deployed = w.filter(wallet => wallet.contract_address);
+            const users = res.data.users || res.data.wallets || [];
+            debugLog("fetchWallets:users_loaded", { count: users.length });
+
+            const w = await Promise.all(
+                users.map(async (u) => {
+                    const userId = u.user_id || u.label;
+                    if (!userId) return null;
+                    try {
+                        const walletRes = await getWalletInfo(userId);
+                        debugLog("fetchWallets:wallet_loaded", {
+                            user_id: userId,
+                            deployment_status: walletRes.data?.deployment_status,
+                            contract_address: walletRes.data?.contract_address,
+                        });
+                        return {
+                            label: userId,
+                            user_id: userId,
+                            username: u.username || u.email || userId,
+                            ...walletRes.data,
+                        };
+                    } catch {
+                        debugLog("fetchWallets:wallet_load_failed", { user_id: userId });
+                        return {
+                            label: userId,
+                            user_id: userId,
+                            username: u.username || u.email || userId,
+                            contract_address: null,
+                            deployment_status: "unknown",
+                        };
+                    }
+                })
+            );
+
+            const walletsNormalized = w.filter(Boolean);
+            setWallets(walletsNormalized);
+            const deployed = walletsNormalized.filter(wallet => wallet.contract_address);
             const balanceResults = await Promise.all(
                 deployed.map(wallet =>
-                    getWalletBalance(wallet.label).then(r => ({ label: wallet.label, data: r.data })).catch(() => null)
+                    getWalletBalance(wallet.user_id).then(r => ({ user_id: wallet.user_id, data: r.data })).catch(() => null)
                 )
             );
             const newBalances = {};
             balanceResults.forEach(b => {
-                if (b) newBalances[b.label] = b.data;
+                if (b) newBalances[b.user_id] = b.data;
             });
             setBalances(newBalances);
-        } catch {
+            debugLog("fetchWallets:done", {
+                wallets: walletsNormalized.length,
+                deployed_wallets: deployed.length,
+            });
+        } catch (err) {
+            debugError("fetchWallets:error", err);
             // API might be offline
         }
+    }
+
+    async function waitForDeploymentStatus(userId, options = {}) {
+        const maxAttempts = options.maxAttempts || 15;
+        const intervalMs = options.intervalMs || 3000;
+        debugLog("deployment_poll:start", { user_id: userId, maxAttempts, intervalMs });
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const res = await getDeploymentStatus(userId);
+                const status = res.data?.deployment_status;
+                debugLog("deployment_poll:tick", {
+                    attempt,
+                    status,
+                    deployment_attempts: res.data?.deployment_attempts,
+                    deployment_error_message: res.data?.deployment_error_message,
+                    tx_hash: res.data?.deployment_tx_hash,
+                });
+
+                if (status === "deployed" || status === "failed") {
+                    return res.data;
+                }
+            } catch (err) {
+                debugError("deployment_poll:error", err);
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        }
+
+        debugLog("deployment_poll:timeout", { user_id: userId });
+        return null;
     }
 
     // ─── Camera Functions ─────────────────────────────────────────
@@ -117,36 +207,93 @@ export default function CreateWallet() {
         setCreating(true);
         setError(null);
         setResult(null);
+        debugLog("handleCreate:start", { label });
 
         try {
             const walletLabel = label.trim() || "default";
-            // Send photo to backend (if captured). All entropy processing happens server-side.
-            const res = await createWallet(walletLabel, capturedPhoto || "");
-            setResult(res.data);
+            // Generate a validator-safe unique email for custodial user records.
+            const safeLabel = walletLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "wallet";
+            const email = `${safeLabel}-${Date.now()}@test.com`;
+            debugLog("handleCreate:request_payload", { email, username: walletLabel });
+            // All entropy processing happens server-side with photo
+            const res = await createWallet({
+                email,
+                username: walletLabel
+            });
+            debugLog("handleCreate:createWallet_response", res.data);
+
+            const initialStatus = res.data.deployment_status || "pending";
+            let finalStatus = initialStatus;
+            let deploymentMeta = null;
+            if (res.data.user_id && (initialStatus === "pending" || initialStatus === "counterfactual")) {
+                deploymentMeta = await waitForDeploymentStatus(res.data.user_id);
+                if (deploymentMeta?.deployment_status) {
+                    finalStatus = deploymentMeta.deployment_status;
+                }
+            }
+
+            setResult({
+                ...res.data,
+                label: walletLabel,
+                algorithm: "ML-DSA-44",
+                pubkey_hash: res.data.public_key_hash,
+                deployment_status: finalStatus,
+                deployment_error: deploymentMeta?.deployment_error_message || res.data.deployment_error_message || null,
+                deployment_tx_hash: deploymentMeta?.deployment_tx_hash || res.data.deployment_tx_hash || null,
+                seed_verified: Boolean(capturedPhoto),
+                explorer_url: res.data.contract_address
+                    ? `https://sepolia.starkscan.co/contract/${res.data.contract_address}`
+                    : null,
+            });
+
+            debugLog("handleCreate:final_status", {
+                user_id: res.data.user_id,
+                status: finalStatus,
+                deployment_error: deploymentMeta?.deployment_error_message || null,
+                deployment_tx_hash: deploymentMeta?.deployment_tx_hash || null,
+            });
+
+            if (finalStatus === "failed") {
+                setError(deploymentMeta?.deployment_error_message || "Deployment failed. See console logs for details.");
+            }
+
             setLabel("");
             setCapturedPhoto(null);
             await fetchWallets();
             await refreshAll();
         } catch (err) {
+            debugError("handleCreate:error", err);
             setError(
-                err.response?.data?.detail || err.message || "Failed to create wallet",
+                err.readableMessage ||
+                err.response?.data?.detail ||
+                err.message ||
+                "Failed to create wallet",
             );
         } finally {
+            debugLog("handleCreate:done");
             setCreating(false);
         }
     }
 
     async function handleSelect(wallet) {
         try {
-            const res = await getWalletInfo(wallet.label);
+            const res = await getWalletInfo(wallet.user_id || wallet.label);
             setSelected(res.data);
         } catch (err) {
-            setError(err.response?.data?.detail || "Failed to load wallet info");
+            setError(
+                err.readableMessage ||
+                err.response?.data?.detail ||
+                "Failed to load wallet info"
+            );
         }
     }
 
     const copyToClipboard = async (text) => {
-        try { await navigator.clipboard.writeText(text); } catch { }
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch {
+            return null;
+        }
     };
 
     return (
@@ -411,7 +558,7 @@ export default function CreateWallet() {
 
                     {/* Wallets List / Details */}
                     {selected ? (
-                        <Card title={`Wallet: ${selected.label}`} className="h-full">
+                        <Card title={`Wallet: ${selected.label || selected.user_id || "selected"}`} className="h-full">
                             <div className="flex justify-between items-start mb-6">
                                 <div className="text-xs text-gray-400 font-mono">
                                     STATUS: {selected.deployment_status?.toUpperCase() || 'UNKNOWN'}
@@ -481,9 +628,9 @@ export default function CreateWallet() {
                             ) : (
                                 wallets.map((w) => (
                                     <WalletCard
-                                        key={w.label}
+                                        key={w.user_id || w.label}
                                         wallet={w}
-                                        balance={balances[w.label]}
+                                        balance={balances[w.user_id || w.label]}
                                         onSelect={handleSelect}
                                         className="cursor-pointer hover:border-neon-purple/50 transition-all"
                                     />

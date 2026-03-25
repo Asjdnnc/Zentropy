@@ -9,6 +9,7 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
 
     const isDeployed = wallet.deployment_status === 'deployed' && wallet.contract_address;
     const isFailed = wallet.deployment_status === 'failed';
+    const identityHash = wallet.pubkey_hash || wallet.public_key_hash || '';
 
     const statusColor = isDeployed
         ? 'text-green-400 bg-green-500/10 border-green-500/20'
@@ -32,11 +33,27 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
         e.stopPropagation();
         setDeploying(true);
         setDeployError(null);
+        console.log('[WalletCard] retry_deploy:start', {
+            user_id: wallet.user_id || wallet.label,
+            deployment_status: wallet.deployment_status,
+            contract_address: wallet.contract_address,
+        });
         try {
-            await deployWalletContract(wallet.label);
+            const response = await deployWalletContract(wallet.user_id || wallet.label);
+            console.log('[WalletCard] retry_deploy:queued', response?.data || null);
             window.location.reload();
         } catch (err) {
-            setDeployError(err.response?.data?.detail || 'Deploy failed');
+            console.error('[WalletCard] retry_deploy:error', {
+                message: err?.message,
+                readableMessage: err?.readableMessage,
+                status: err?.response?.status,
+                detail: err?.response?.data?.detail,
+            });
+            setDeployError(
+                err.readableMessage ||
+                err.response?.data?.detail ||
+                'Deploy failed'
+            );
         } finally {
             setDeploying(false);
         }
@@ -131,14 +148,14 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
                     <span className="text-gray-500 text-xs">Identity Hash</span>
                     <div className="flex items-center gap-2 mt-0.5">
                         <p className="text-gray-300 font-mono text-xs break-all flex-1">
-                            {wallet.pubkey_hash
-                                ? wallet.pubkey_hash.slice(0, 24) + '...'
-                                : 'N/A'}
+                            {identityHash ? identityHash.slice(0, 24) + '...' : 'N/A'}
                         </p>
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                copyToClipboard(wallet.pubkey_hash, 'hash');
+                                if (identityHash) {
+                                    copyToClipboard(identityHash, 'hash');
+                                }
                             }}
                             className="text-gray-500 hover:text-white transition-colors shrink-0"
                             title="Copy identity hash"
@@ -185,14 +202,14 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
                 {isDeployed && showActions && (
                     <div className="flex gap-2 pt-2">
                         <Link
-                            to={`/send?wallet=${wallet.label}`}
+                            to={`/send?wallet=${wallet.user_id || wallet.label}`}
                             onClick={(e) => e.stopPropagation()}
                             className="flex-1 px-3 py-2 bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 rounded-lg text-xs text-center hover:bg-indigo-600/40 transition-colors"
                         >
                             Send STRK
                         </Link>
                         <Link
-                            to={`/receive?wallet=${wallet.label}`}
+                            to={`/receive?wallet=${wallet.user_id || wallet.label}`}
                             onClick={(e) => e.stopPropagation()}
                             className="flex-1 px-3 py-2 bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 rounded-lg text-xs text-center hover:bg-cyan-600/40 transition-colors"
                         >

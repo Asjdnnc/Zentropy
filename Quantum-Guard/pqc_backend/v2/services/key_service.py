@@ -29,7 +29,13 @@ import time
 import uuid
 from typing import Optional
 
-import oqs  # type: ignore
+try:
+    import oqs  # type: ignore
+    OQS_AVAILABLE = True
+except BaseException as e:  # pragma: no cover - depends on local native setup
+    oqs = None  # type: ignore
+    OQS_AVAILABLE = False
+    _OQS_IMPORT_ERROR = e
 
 from ..models.enums import PQ_ALGORITHM, KeyStatus
 
@@ -44,6 +50,16 @@ _DEFAULT_DEV_SECRET = "dev-only-insecure-master-key-do-not-use-in-production"
 # In production, use the full official BIP-39 list.
 # Here we embed a small bootstrapping function.
 _BIP39_WORDLIST: Optional[list[str]] = None
+
+
+def _is_truthy(value: str) -> bool:
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _allow_insecure_pqc_fallback() -> bool:
+    env = os.environ.get("ENV", "development").strip().lower()
+    explicit_opt_in = _is_truthy(os.environ.get("ALLOW_INSECURE_PQC_FALLBACK", "0"))
+    return env != "production" or explicit_opt_in
 
 
 def _load_bip39_wordlist() -> list[str]:
@@ -124,6 +140,17 @@ class KeyService:
 
     def __init__(self):
         self._master_key = _get_master_key()
+        if not OQS_AVAILABLE:
+            if not _allow_insecure_pqc_fallback():
+                raise RuntimeError(
+                    "oqs native library unavailable in production mode. "
+                    "Install liboqs/oqs or set ALLOW_INSECURE_PQC_FALLBACK=true for non-production demos."
+                )
+            logger.warning(
+                "oqs native library unavailable; using development fallback signing. "
+                "Error: %s",
+                _OQS_IMPORT_ERROR,
+            )
 
     # ── Key Generation ────────────────────────────────────────
 
@@ -136,9 +163,14 @@ class KeyService:
             secret_key      (bytes)  — will be encrypted before storage
             public_key_hash (str)
         """
-        with oqs.Signature(PQ_ALGORITHM) as signer:
-            public_key = signer.generate_keypair()
-            secret_key = signer.export_secret_key()
+        if OQS_AVAILABLE:
+            with oqs.Signature(PQ_ALGORITHM) as signer:
+                public_key = signer.generate_keypair()
+                secret_key = signer.export_secret_key()
+        else:
+            # Development fallback only: preserve API shape without native oqs.
+            secret_key = secrets.token_bytes(32)
+            public_key = secret_key
 
         return {
             "public_key": public_key,
@@ -200,8 +232,11 @@ class KeyService:
         """
         sk = self.decrypt_secret_key(encrypted_sk_b64)
         try:
-            with oqs.Signature(PQ_ALGORITHM, secret_key=sk) as signer:
-                signature = signer.sign(message)
+            if OQS_AVAILABLE:
+                with oqs.Signature(PQ_ALGORITHM, secret_key=sk) as signer:
+                    signature = signer.sign(message)
+            else:
+                signature = hmac.new(sk, message, hashlib.sha256).digest()
             return signature
         finally:
             # Overwrite sk in memory (best effort)
@@ -213,11 +248,14 @@ class KeyService:
         self, message: bytes, signature: bytes, public_key: bytes
     ) -> bool:
         """Verify a Dilithium signature."""
-        with oqs.Signature(PQ_ALGORITHM) as verifier:
-            try:
-                return verifier.verify(message, signature, public_key)
-            except Exception:
-                return False
+        if OQS_AVAILABLE:
+            with oqs.Signature(PQ_ALGORITHM) as verifier:
+                try:
+                    return verifier.verify(message, signature, public_key)
+                except Exception:
+                    return False
+        expected = hmac.new(public_key, message, hashlib.sha256).digest()
+        return hmac.compare_digest(signature, expected)
 
     # ── DB Operations ─────────────────────────────────────────
 

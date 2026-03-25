@@ -11,20 +11,21 @@ class TestOrganizationCreation:
 
     async def test_create_organization(self, wallet_service, conn):
         """Should create an org and return an API key."""
-        result = await wallet_service.create_organization(conn, "Acme Corp")
+        result = await wallet_service.create_organization(conn, "Acme Corp", "acme@example.com")
         assert result is not None
         assert "org_id" in result
+        assert result["admin_email"] == "acme@example.com"
         assert "api_key" in result
 
     async def test_org_ids_are_unique(self, wallet_service, conn):
         """Creating two orgs should produce unique IDs."""
-        r1 = await wallet_service.create_organization(conn, "Org One")
-        r2 = await wallet_service.create_organization(conn, "Org Two")
+        r1 = await wallet_service.create_organization(conn, "Org One", "one@example.com")
+        r2 = await wallet_service.create_organization(conn, "Org Two", "two@example.com")
         assert r1["org_id"] != r2["org_id"]
 
     async def test_get_org_by_api_key(self, wallet_service, conn):
         """Should find an org by its API key."""
-        created = await wallet_service.create_organization(conn, "Lookup Test Corp")
+        created = await wallet_service.create_organization(conn, "Lookup Test Corp", "lookup@example.com")
         org = await wallet_service.get_organization_by_api_key(conn, created["api_key"])
         assert org is not None
         assert org["org_id"] == created["org_id"]

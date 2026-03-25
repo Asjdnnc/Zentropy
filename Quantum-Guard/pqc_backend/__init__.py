@@ -1,19 +1,21 @@
 """
-QuantumGuard PQC Backend
-========================
-Post-quantum cryptographic kernel using ML-DSA-44 (Dilithium)
-for quantum-resistant digital signatures with hybrid seed generation.
+QuantumGuard PQC Backend v2
+===========================
+Multi-user custodial wallet system using ML-DSA-44 (Dilithium)
+for quantum-resistant digital signatures on Starknet.
 
-Modules:
-    config            - Algorithm parameters & path configuration
-    key_manager       - Generate, store, and load ML-DSA keypairs (system PRNG + hybrid seed)
-    signer            - Create and verify ML-DSA detached signatures
-    utils             - Shared utilities (encoding, hashing, hybrid seed generation)
-    drand_integration - Fetch publicly verifiable randomness from Drand beacon network
-    merkle_audit      - Append-only SHA-256 Merkle tree for tamper-evident audit trail
-    batch_committer   - Background service to commit Merkle batches to Starknet
-    persistence       - SQLite persistence + Merkle batch/leaf storage
-    transfer_handler  - Full transfer pipeline (sign, prove, execute, audit)
+Core Services:
+    KeyService              - ML-DSA-44 keypair generation, AES-256-GCM encryption, signing
+    WalletService           - Organization/user/wallet management with counterfactual addresses
+    TransactionService      - Full pipeline: sign → prove → batch → Starknet submit
+    MerkleService           - SHA-256 Merkle tree batching with finalization
+    AuditService            - Hash-chained immutable audit log for tamper detection
+
+Infrastructure:
+    db/                     - PostgreSQL (primary) / SQLite (fallback) connection pool & migrations
+    models/                 - Pydantic schemas & algorithm constants (ML-DSA-44, ML-KEM-768)
+    api/                    - FastAPI REST router (14+ endpoints, Bearer token auth)
+    tests/                  - Unit & integration tests
 """
 
-__version__ = "0.2.0"
+__version__ = "2.0.0"

@@ -19,6 +19,8 @@ _TEST_DB_PATH = os.path.join(_TMPDIR, "test.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB_PATH}"
 os.environ["QUANTUMGUARD_MASTER_SECRET"] = "test_master_secret_for_unit_tests_only_not_production"
 os.environ["BOOTSTRAP_SECRET"] = "test_bootstrap_secret"
+os.environ["ENV"] = "test"
+os.environ["ALLOW_INSECURE_PQC_FALLBACK"] = "1"
 os.environ.setdefault("STARKNET_RPC", "https://test-rpc.example.com")
 os.environ.setdefault("STARKNET_PRIVATE_KEY", "0xTEST")
 os.environ.setdefault("STARKNET_ACCOUNT_ADDRESS", "0xTEST")
@@ -99,5 +101,5 @@ def transaction_service(key_service, audit_service, merkle_service):
 @pytest_asyncio.fixture
 async def test_org(conn, wallet_service):
     """Create a test organization and return its dict."""
-    result = await wallet_service.create_organization(conn, "Test Org")
+    result = await wallet_service.create_organization(conn, "Test Org", "test-org@example.com")
     return result

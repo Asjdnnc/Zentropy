@@ -289,7 +289,7 @@ pub mod QuantumGuardFactory {
         }
 
         fn NEW_CLASS() -> ClassHash {
-            class_hash_const::<0xNEW>()
+            class_hash_const::<0xBEEF>()
         }
 
         fn PUBKEY_HASH() -> felt252 {

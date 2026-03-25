@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { listWallets, getWalletBalance } from "../api/client";
+import { listWallets, getWalletBalance, getWalletInfo } from "../api/client";
 import Card from "../components/Card";
 
 export default function ReceiveTokens() {
@@ -12,41 +12,63 @@ export default function ReceiveTokens() {
     const [balances, setBalances] = useState({});
     const [copied, setCopied] = useState(false);
 
-    useEffect(() => {
-        fetchWallets();
-    }, []);
-
-    async function fetchWallets() {
+    const fetchWallets = useCallback(async () => {
         try {
             const res = await listWallets();
-            const w = (res.data.wallets || []).filter(
+            const users = res.data.users || res.data.wallets || [];
+            const enriched = await Promise.all(
+                users.map(async (u) => {
+                    const userId = u.user_id || u.label;
+                    if (!userId) return null;
+                    try {
+                        const walletRes = await getWalletInfo(userId);
+                        return {
+                            label: userId,
+                            user_id: userId,
+                            username: u.username || u.email || userId,
+                            ...walletRes.data,
+                        };
+                    } catch {
+                        return null;
+                    }
+                })
+            );
+            const w = enriched.filter(Boolean).filter(
                 (wallet) => wallet.contract_address && wallet.deployment_status === "deployed"
             );
             setWallets(w);
 
             if (!selected && w.length > 0) {
-                setSelected(w[0].label);
+                setSelected(w[0].user_id);
             }
 
             const balanceResults = await Promise.all(
                 w.map((wallet) =>
-                    getWalletBalance(wallet.label)
-                        .then((r) => ({ label: wallet.label, data: r.data }))
+                    getWalletBalance(wallet.user_id)
+                        .then((r) => ({ user_id: wallet.user_id, data: r.data }))
                         .catch(() => null)
                 )
             );
             const b = {};
             balanceResults.forEach((r) => {
-                if (r) b[r.label] = r.data;
+                if (r) b[r.user_id] = r.data;
             });
             setBalances(b);
         } catch {
             // noop
         }
-    }
+    }, [selected]);
 
-    const wallet = wallets.find((w) => w.label === selected);
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchWallets();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, [fetchWallets]);
+
+    const wallet = wallets.find((w) => w.user_id === selected);
     const balance = balances[selected];
+    const balanceText = balance?.balance_display || balance?.balance_strk || "0.000000";
 
     async function copyAddress() {
         if (!wallet?.contract_address) return;
@@ -106,8 +128,8 @@ export default function ReceiveTokens() {
                             className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-cyan/50 transition-all"
                         >
                             {wallets.map((w) => (
-                                <option key={w.label} value={w.label}>
-                                    {w.label}
+                                <option key={w.user_id} value={w.user_id}>
+                                    {w.label || w.user_id}
                                 </option>
                             ))}
                         </select>
@@ -133,8 +155,8 @@ export default function ReceiveTokens() {
                                 <button
                                     onClick={copyAddress}
                                     className={`w-full py-3 rounded-lg font-orbitron text-sm transition-all flex items-center justify-center gap-2 ${copied
-                                            ? "bg-neon-green/20 border border-neon-green/50 text-neon-green"
-                                            : "bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20"
+                                        ? "bg-neon-green/20 border border-neon-green/50 text-neon-green"
+                                        : "bg-neon-cyan/10 border border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/20"
                                         }`}
                                 >
                                     {copied ? (
@@ -171,7 +193,7 @@ export default function ReceiveTokens() {
                                 {balance && (
                                     <div className="pt-4 border-t border-white/10">
                                         <p className="text-xs text-gray-500 mb-1">CURRENT BALANCE</p>
-                                        <p className="text-2xl font-mono text-white">{balance.balance_display}</p>
+                                        <p className="text-2xl font-mono text-white">{balanceText}</p>
                                     </div>
                                 )}
                             </div>
@@ -198,7 +220,7 @@ export default function ReceiveTokens() {
                             <div className="space-y-3 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">Label</span>
-                                    <span className="text-white font-mono">{wallet.label}</span>
+                                    <span className="text-white font-mono">{wallet.label || wallet.user_id}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-500">Algorithm</span>

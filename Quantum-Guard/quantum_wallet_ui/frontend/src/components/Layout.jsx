@@ -1,7 +1,10 @@
 import React from "react";
 import Sidebar from "./Sidebar";
+import { getApiBase } from "../api/client";
 
 export default function Layout({ children }) {
+  const apiBase = getApiBase() || "(relative /api)";
+
   return (
     <div className="min-h-screen bg-bg-dark text-white font-inter selection:bg-neon-cyan selection:text-black">
       <Sidebar />
@@ -13,10 +16,10 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end">
               <span className="text-xs text-neon-purple font-medium">
-                Connect: Localhost
+                API Endpoint
               </span>
               <span className="text-[10px] text-gray-500 font-mono">
-                127.0.0.1:8000
+                {apiBase}
               </span>
             </div>
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 border border-white/20"></div>

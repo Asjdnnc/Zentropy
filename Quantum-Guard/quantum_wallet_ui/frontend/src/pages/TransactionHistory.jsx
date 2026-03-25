@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { getTransactionHistory, getTransactionStatus } from "../api/client";
+import { getTransactionHistory, getTransactionStatus, getActiveUserId } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -35,10 +35,16 @@ export default function TransactionHistory() {
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
+      const activeUserId = getActiveUserId();
+      if (!activeUserId) {
+        setTransactions([]);
+        setTotal(0);
+        return;
+      }
       const params = { limit, offset: page * limit };
-      if (filter.label) params.label = filter.label;
-      if (filter.status) params.status = filter.status;
-      const res = await getTransactionHistory(params);
+      // Backend endpoint only supports: user_id, limit, offset
+      // Note: label and status filtering needs to be done on the frontend
+      const res = await getTransactionHistory({ ...params, user_id: activeUserId });
       setTransactions(res.data.transactions || []);
       setTotal(res.data.total || 0);
     } catch {
@@ -46,7 +52,7 @@ export default function TransactionHistory() {
     } finally {
       setLoading(false);
     }
-  }, [page, filter]);
+  }, [page]);
 
   useEffect(() => {
     fetchHistory();
@@ -60,7 +66,9 @@ export default function TransactionHistory() {
       // Refresh to pick up any state changes
       fetchHistory();
     } catch (err) {
-      setStatusDetail({ error: err.message });
+      setStatusDetail({
+        error: err.readableMessage || err.message || 'Failed to fetch transaction status'
+      });
     }
   }
 
@@ -161,13 +169,13 @@ export default function TransactionHistory() {
                       {tx.tx_id.slice(0, 8)}...
                     </td>
                     <td className="px-6 py-4 text-gray-300">
-                      {tx.wallet_label}
+                      {tx.account_id ? tx.account_id.slice(0, 8) + "..." : "-"}
                     </td>
                     <td className="px-6 py-4 font-mono text-xs text-gray-400">
-                      {tx.to_addr?.slice(0, 10)}...
+                      {tx.to_address ? tx.to_address.slice(0, 10) + "..." : "-"}
                     </td>
                     <td className="px-6 py-4 text-white font-medium">
-                      {tx.amount}
+                      {tx.amount_strk || "0.000000"}
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge
@@ -176,12 +184,12 @@ export default function TransactionHistory() {
                       />
                     </td>
                     <td className="px-6 py-4">
-                      {tx.starknet_tx_hash ? (
+                      {tx.tx_hash ? (
                         <span
                           className="font-mono text-xs text-blue-400 hover:text-blue-300 cursor-help"
-                          title={tx.starknet_tx_hash}
+                          title={tx.tx_hash}
                         >
-                          {tx.starknet_tx_hash.slice(0, 10)}...
+                          {tx.tx_hash.slice(0, 10)}...
                         </span>
                       ) : (
                         <span className="text-gray-600 text-xs">—</span>
@@ -309,13 +317,13 @@ export default function TransactionHistory() {
                   </div>
                 )}
 
-                {statusDetail.starknet_tx_hash && (
+                {statusDetail.tx_hash && (
                   <div className="p-4 bg-indigo-900/10 rounded-lg border border-indigo-500/20">
                     <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
                       Starknet TX Hash
                     </span>
                     <p className="text-indigo-300 font-mono text-xs break-all">
-                      {statusDetail.starknet_tx_hash}
+                      {statusDetail.tx_hash}
                     </p>
                   </div>
                 )}

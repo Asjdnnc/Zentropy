@@ -13,13 +13,16 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 import sys
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DOTENV_PATH = _PROJECT_ROOT / ".env"
+load_dotenv(dotenv_path=_DOTENV_PATH, override=True)
 
 
 # ── Application ──────────────────────────────────────────
@@ -40,7 +43,9 @@ app = FastAPI(
 _cors_origins = [
     o.strip()
     for o in os.environ.get(
-        "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "https://zentropy-steel.vercel.app",
     ).split(",")
 ]
 app.add_middleware(
@@ -70,6 +75,7 @@ async def startup():
     from .db.migrations import run_migrations
 
     logger.info("QuantumGuard v2 starting up …")
+    logger.info("Effective STARKNET_RPC: %s", os.environ.get("STARKNET_RPC", "UNSET"))
     await get_pool()
     await run_migrations()
     logger.info("QuantumGuard v2 ready — multi-user custodial mode")

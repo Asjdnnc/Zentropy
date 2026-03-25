@@ -28,7 +28,7 @@ class TestFullPipeline:
         Complete flow: org → user → wallet verify → audit verify.
         """
         # ── Step 1: Create organization ──────────────────────────
-        org = await wallet_service.create_organization(conn, "Integration Test Corp")
+        org = await wallet_service.create_organization(conn, "Integration Test Corp", "integration@example.com")
         assert org["org_id"]
         assert org["api_key"]
         org_id = org["org_id"]
@@ -83,7 +83,7 @@ class TestMultiUserIsolation:
 
     async def test_users_have_different_keys(self, wallet_service, conn):
         """Each user should get a unique keypair."""
-        org = await wallet_service.create_organization(conn, "Multi User Org")
+        org = await wallet_service.create_organization(conn, "Multi User Org", "multi-user@example.com")
         org_id = org["org_id"]
 
         user1 = await wallet_service.register_user(conn, org_id, "user1@test.com")
@@ -107,7 +107,7 @@ class TestMultiUserIsolation:
 
     async def test_users_have_different_wallets(self, wallet_service, conn):
         """Each user should have a separate wallet record."""
-        org = await wallet_service.create_organization(conn, "Wallet Isolation Org")
+        org = await wallet_service.create_organization(conn, "Wallet Isolation Org", "isolation@example.com")
         org_id = org["org_id"]
 
         u1 = await wallet_service.register_user(conn, org_id, "a@test.com")

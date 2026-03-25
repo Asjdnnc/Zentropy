@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { listWallets, getWalletBalance, executeTransfer, getTransferStatus } from "../api/client";
+import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo } from "../api/client";
 import { useWallet } from "../context/WalletContext";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -13,7 +13,7 @@ export default function SendTokens() {
     const [wallets, setWallets] = useState([]);
     const [balances, setBalances] = useState({});
     const [form, setForm] = useState({
-        label: initialWallet,
+        user_id: initialWallet,
         to_address: "",
         amount_strk: "",
     });
@@ -21,48 +21,93 @@ export default function SendTokens() {
     const [result, setResult] = useState(null);
     const [error, setError] = useState(null);
     const [txStatus, setTxStatus] = useState(null);
+    const [polling, setPolling] = useState(false);
+    const [pollTimedOut, setPollTimedOut] = useState(false);
+    const pollAbortRef = useRef(null);
 
-    useEffect(() => {
-        fetchWallets();
-    }, []);
+    const balanceText = (b) => b?.balance_display || b?.balance_strk || "0.000000";
 
-    async function fetchWallets() {
+    const isAbortError = (err) =>
+        err?.name === "AbortError" ||
+        err?.code === "ERR_CANCELED" ||
+        /aborted|canceled/i.test(String(err?.message || ""));
+
+    const fetchWallets = useCallback(async (options = {}) => {
         try {
-            const res = await listWallets();
-            const w = (res.data.wallets || []).filter(
+            const res = await listWallets(50, 0, { signal: options.signal });
+            const users = res.data.users || res.data.wallets || [];
+            const enriched = await Promise.all(
+                users.map(async (u) => {
+                    const userId = u.user_id || u.label;
+                    if (!userId) return null;
+                    try {
+                        const walletRes = await getWalletInfo(userId, { signal: options.signal });
+                        return {
+                            label: userId,
+                            user_id: userId,
+                            username: u.username || u.email || userId,
+                            ...walletRes.data,
+                        };
+                    } catch {
+                        return null;
+                    }
+                })
+            );
+            const w = enriched.filter(Boolean).filter(
                 (wallet) => wallet.contract_address && wallet.deployment_status === "deployed"
             );
             setWallets(w);
 
             // Auto-select first if no wallet specified
-            if (!form.label && w.length > 0) {
-                setForm((prev) => ({ ...prev, label: w[0].label }));
+            if (!form.user_id && w.length > 0) {
+                setForm((prev) => ({ ...prev, user_id: w[0].user_id }));
             }
 
             // Fetch balances
             const balanceResults = await Promise.all(
                 w.map((wallet) =>
-                    getWalletBalance(wallet.label)
-                        .then((r) => ({ label: wallet.label, data: r.data }))
+                    getWalletBalance(wallet.user_id, { signal: options.signal })
+                        .then((r) => ({ user_id: wallet.user_id, data: r.data }))
                         .catch(() => null)
                 )
             );
             const newBalances = {};
             balanceResults.forEach((b) => {
-                if (b) newBalances[b.label] = b.data;
+                if (b) newBalances[b.user_id] = b.data;
             });
             setBalances(newBalances);
-        } catch {
+        } catch (err) {
+            if (isAbortError(err)) {
+                return;
+            }
             // API offline
         }
-    }
+    }, [form.user_id]);
+
+    useEffect(() => {
+        const abortController = new AbortController();
+        fetchWallets({ signal: abortController.signal });
+        return () => abortController.abort();
+    }, [fetchWallets]);
+
+    useEffect(() => {
+        return () => {
+            if (pollAbortRef.current) {
+                pollAbortRef.current.abort();
+                pollAbortRef.current = null;
+            }
+        };
+    }, []);
 
     function handleChange(e) {
         setForm({ ...form, [e.target.name]: e.target.value });
     }
 
     function validateAddress(addr) {
-        return /^0x[0-9a-fA-F]{1,64}$/.test(addr);
+        const value = String(addr || "").trim();
+        if (!/^0x[0-9a-fA-F]{1,64}$/.test(value)) return false;
+        const body = value.slice(2).replace(/^0+/, "");
+        return body.length > 0;
     }
 
     async function handleSubmit(e) {
@@ -71,7 +116,7 @@ export default function SendTokens() {
         setResult(null);
         setTxStatus(null);
 
-        if (!form.label) {
+        if (!form.user_id) {
             setError("Please select a wallet");
             return;
         }
@@ -84,12 +129,22 @@ export default function SendTokens() {
             setError("Amount must be greater than 0");
             return;
         }
+        if (!/^\d+(\.\d{1,6})?$/.test(String(form.amount_strk).trim())) {
+            setError("Amount supports up to 6 decimal places.");
+            return;
+        }
+        const available = parseFloat(selectedBalance?.balance_display || selectedBalance?.balance_strk || "0");
+        if (!Number.isNaN(available) && amount > available) {
+            setError("Insufficient balance for this transfer.");
+            return;
+        }
 
         setSending(true);
+        setPollTimedOut(false);
 
         try {
             const res = await executeTransfer({
-                label: form.label,
+                user_id: form.user_id,
                 to_address: form.to_address,
                 amount_strk: amount,
             });
@@ -100,34 +155,65 @@ export default function SendTokens() {
             await fetchWallets();
 
             // Poll for confirmation if we got a tx hash
-            if (res.data.starknet_tx_hash) {
-                pollTxStatus(res.data.starknet_tx_hash);
+            if (res.data.tx_id) {
+                pollTxStatus(res.data.tx_id);
             }
         } catch (err) {
             setError(
-                err.response?.data?.detail || err.message || "Transfer failed"
+                err.readableMessage ||
+                err.response?.data?.detail ||
+                err.message ||
+                "Transfer failed"
             );
         } finally {
             setSending(false);
         }
     }
 
-    async function pollTxStatus(txHash) {
-        for (let i = 0; i < 15; i++) {
-            await new Promise((r) => setTimeout(r, 3000));
+    async function pollTxStatus(txId, options = {}) {
+        if (pollAbortRef.current) {
+            pollAbortRef.current.abort();
+        }
+
+        const maxAttempts = options.maxAttempts || 30;
+        const intervalMs = options.intervalMs || 3000;
+        const controller = new AbortController();
+        pollAbortRef.current = controller;
+        setPolling(true);
+        setPollTimedOut(false);
+        let terminalStatus = null;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            if (controller.signal.aborted) {
+                setPolling(false);
+                return;
+            }
+            await new Promise((r) => setTimeout(r, intervalMs));
             try {
-                const res = await getTransferStatus(txHash);
+                const res = await getTransferStatus(txId, { signal: controller.signal });
                 setTxStatus(res.data);
                 if (res.data.status === "confirmed" || res.data.status === "rejected") {
+                    terminalStatus = res.data.status;
+                    setPolling(false);
                     break;
                 }
-            } catch {
+            } catch (err) {
+                if (isAbortError(err)) {
+                    setPolling(false);
+                    return;
+                }
+                setPolling(false);
                 break;
             }
         }
+
+        if (!terminalStatus) {
+            setPollTimedOut(true);
+        }
+        setPolling(false);
     }
 
-    const selectedBalance = balances[form.label];
+    const selectedBalance = balances[form.user_id];
 
     return (
         <div className="space-y-8 animate-fade-in">
@@ -163,21 +249,21 @@ export default function SendTokens() {
                                     From Wallet
                                 </label>
                                 <select
-                                    name="label"
-                                    value={form.label}
+                                    name="user_id"
+                                    value={form.user_id}
                                     onChange={handleChange}
                                     className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-cyan/50 transition-all"
                                 >
                                     <option value="">Select wallet...</option>
                                     {wallets.map((w) => (
-                                        <option key={w.label} value={w.label}>
-                                            {w.label} — {balances[w.label]?.balance_display || "loading..."}
+                                        <option key={w.user_id} value={w.user_id}>
+                                            {w.label || w.user_id} — {balanceText(balances[w.user_id]) || "loading..."}
                                         </option>
                                     ))}
                                 </select>
                                 {selectedBalance && (
                                     <div className="mt-2 text-xs text-gray-500">
-                                        Available: <span className="text-white font-mono">{selectedBalance.balance_display}</span>
+                                        Available: <span className="text-white font-mono">{balanceText(selectedBalance)}</span>
                                     </div>
                                 )}
                             </div>
@@ -310,18 +396,39 @@ export default function SendTokens() {
                                     {/* Live TX Status */}
                                     {txStatus && (
                                         <div className={`p-3 rounded-lg border ${txStatus.status === 'confirmed'
-                                                ? 'bg-green-900/20 border-green-500/20'
-                                                : txStatus.status === 'rejected'
-                                                    ? 'bg-red-900/20 border-red-500/20'
-                                                    : 'bg-blue-900/20 border-blue-500/20'
+                                            ? 'bg-green-900/20 border-green-500/20'
+                                            : txStatus.status === 'rejected'
+                                                ? 'bg-red-900/20 border-red-500/20'
+                                                : 'bg-blue-900/20 border-blue-500/20'
                                             }`}>
                                             <span className="text-gray-500 block text-xs mb-1">ON-CHAIN STATUS</span>
                                             <span className={`font-mono text-sm ${txStatus.status === 'confirmed' ? 'text-green-400' :
-                                                    txStatus.status === 'rejected' ? 'text-red-400' :
-                                                        'text-blue-400'
+                                                txStatus.status === 'rejected' ? 'text-red-400' :
+                                                    'text-blue-400'
                                                 }`}>
                                                 {txStatus.status.toUpperCase()}
                                             </span>
+                                        </div>
+                                    )}
+
+                                    {polling && (
+                                        <div className="p-3 rounded-lg border bg-blue-900/20 border-blue-500/20">
+                                            <span className="text-blue-300 text-xs">Polling Starknet confirmation...</span>
+                                        </div>
+                                    )}
+
+                                    {pollTimedOut && result?.tx_id && (
+                                        <div className="p-3 rounded-lg border bg-yellow-900/20 border-yellow-500/20">
+                                            <span className="text-yellow-300 text-xs block mb-2">
+                                                Confirmation is taking longer than expected.
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => pollTxStatus(result.tx_id, { maxAttempts: 20, intervalMs: 3000 })}
+                                                className="text-xs px-3 py-1 rounded border border-yellow-400/40 text-yellow-200 hover:bg-yellow-400/10"
+                                            >
+                                                Retry Status Check
+                                            </button>
                                         </div>
                                     )}
                                 </div>

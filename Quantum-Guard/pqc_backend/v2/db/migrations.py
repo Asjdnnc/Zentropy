@@ -25,6 +25,7 @@ _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS organizations (
     org_id          TEXT PRIMARY KEY,
     org_name        TEXT NOT NULL,
+    admin_email     TEXT,
     api_key         TEXT NOT NULL UNIQUE,
     created_at      REAL NOT NULL,
     updated_at      REAL NOT NULL
@@ -194,6 +195,12 @@ CREATE TABLE IF NOT EXISTS balance_cache (
     UNIQUE(contract_address, token_address)
 );
 CREATE INDEX IF NOT EXISTS idx_balance_addr ON balance_cache(contract_address);
+
+-- 12. Backward-compatible schema upgrades
+ALTER TABLE organizations ADD COLUMN admin_email TEXT;
+ALTER TABLE accounts ADD COLUMN deployment_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN last_deployment_attempt REAL;
+ALTER TABLE accounts ADD COLUMN deployment_error_message TEXT;
 """
 
 

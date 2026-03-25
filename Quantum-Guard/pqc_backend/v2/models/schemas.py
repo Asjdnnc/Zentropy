@@ -24,11 +24,13 @@ from .enums import (
 
 class OrganizationCreate(BaseModel):
     org_name: str = Field(..., min_length=1, max_length=255)
+    admin_email: EmailStr
 
 
 class OrganizationOut(BaseModel):
     org_id: str
     org_name: str
+    admin_email: EmailStr
     api_key: str
     created_at: datetime
 
@@ -38,7 +40,7 @@ class OrganizationOut(BaseModel):
 # ──────────────────────────────────────────────
 
 class UserCreate(BaseModel):
-    email: str = Field(..., min_length=3, max_length=255)
+    email: EmailStr
     username: Optional[str] = Field(None, max_length=127)
 
 
@@ -78,6 +80,9 @@ class WalletRegistrationOut(BaseModel):
     public_key: str
     public_key_hash: str
     seed_phrase: str  # shown once
+    deployment_status: str = DeploymentStatus.COUNTERFACTUAL.value
+    deployment_tx_hash: Optional[str] = None
+    deployment_error_message: Optional[str] = None
     status: str = "created"
     message: str = "SAVE YOUR SEED PHRASE — it will not be shown again"
 
@@ -207,6 +212,7 @@ class HealthOut(BaseModel):
     version: str = "2.0.0"
     database: str = "connected"
     starknet_rpc: str = "connected"
+    prover: str = "unknown"
 
 
 class PaginatedResponse(BaseModel):

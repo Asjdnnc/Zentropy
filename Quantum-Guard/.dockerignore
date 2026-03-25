@@ -1,0 +1,42 @@
+.git
+.github
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# Python environments
+.venv/
+venv/
+myenv/
+
+# Local secrets
+.env
+.env.*
+quantum_wallet_ui/frontend/.env
+quantum_wallet_ui/frontend/.env.*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Rust/Cairo outputs
+zk_prover/target/
+starknet_contracts/target/
+
+# Frontend artifacts
+quantum_wallet_ui/frontend/node_modules/
+quantum_wallet_ui/frontend/dist/
+
+# Local/sibling heavy folders not required in image
+liboqs/
+Quantum_Algos/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -22,15 +22,20 @@ import hashlib
 import json
 import logging
 import os
+from pathlib import Path
+import re
 import subprocess
 import time
 import uuid
 from typing import Any, Callable, Optional
 
+import httpx
+
 from ..models.enums import (
     TransactionStatus, AuditAction, AuditEntityType, STRK_DECIMALS,
 )
 from .key_service import KeyService
+from .starknet_felt_utils import pubkey_hash_to_felt
 from .audit_service import AuditService
 
 logger = logging.getLogger("quantumguard.tx_service")
@@ -74,6 +79,15 @@ class TransactionService:
         wallet_id = wallet["wallet_id"]
         account_id = account["account_id"]
         contract_address = account["account_address"]
+
+        deployment_status = (account.get("deployment_status") or "").strip().lower()
+        if deployment_status != "deployed":
+            return {
+                "tx_id": tx_id,
+                "status": "account_not_deployed",
+                "proof_valid": False,
+                "error": "Sender wallet is not deployed on Starknet yet. Wait for deployment to complete.",
+            }
 
         # 2. COMPUTE AMOUNTS
         amount_wei = str(int(amount_strk * (10 ** STRK_DECIMALS)))
@@ -243,6 +257,7 @@ class TransactionService:
             "proof_valid": True,
             "proof_commitment": proof_commitment,
             "batch_id": batch_id,
+            "to_address": to_address,
             "amount_strk": f"{amount_strk:.6f}",
             "amount_wei": amount_wei,
             "explorer_url": explorer_url,
@@ -285,6 +300,15 @@ class TransactionService:
             except Exception as e:
                 logger.warning("Rust prover failed, falling back to Python: %s", e)
 
+        prover_url = os.environ.get("PROVER_URL", "").strip()
+        if prover_url:
+            try:
+                proof = await self._prove_via_http(prover_url, message, signature, public_key)
+                proof["prover"] = proof.get("prover", "rust_http")
+                return proof
+            except Exception as e:
+                logger.warning("HTTP prover failed, falling back to Python: %s", e)
+
         # Python fallback
         valid = self.key_svc.verify_signature(message, signature, public_key)
         msg_hash = hashlib.sha256(message).hexdigest()
@@ -303,6 +327,30 @@ class TransactionService:
             "prover": "python_fallback",
         }
 
+    async def _prove_via_http(
+        self,
+        prover_url: str,
+        message: bytes,
+        signature: bytes,
+        public_key: bytes,
+    ) -> dict:
+        timeout = float(os.environ.get("PROVER_TIMEOUT_SECONDS", "8"))
+        endpoint = f"{prover_url.rstrip('/')}/verify"
+        payload = {
+            "message": base64.b64encode(message).decode(),
+            "signature": base64.b64encode(signature).decode(),
+            "public_key": base64.b64encode(public_key).decode(),
+        }
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(endpoint, json=payload)
+            response.raise_for_status()
+        proof = response.json()
+        if not isinstance(proof, dict):
+            raise RuntimeError("Invalid prover response payload")
+        if "valid" not in proof or "proof_commitment" not in proof:
+            raise RuntimeError("Incomplete prover response")
+        return proof
+
     async def _submit_to_starknet(
         self,
         contract_address: str,
@@ -315,16 +363,36 @@ class TransactionService:
         """Submit execute_with_proof to Starknet via starkli."""
         private_key = os.environ.get("STARKNET_PRIVATE_KEY", "")
         account_addr = os.environ.get("STARKNET_ACCOUNT_ADDRESS", "")
+        account_config = os.environ.get("STARKNET_ACCOUNT_CONFIG", "")
         rpc = os.environ.get(
             "STARKNET_RPC",
             "https://free-rpc.nethermind.io/sepolia-juno/v0_7",
         )
 
-        if not private_key or not account_addr:
-            raise RuntimeError("STARKNET_PRIVATE_KEY and STARKNET_ACCOUNT_ADDRESS required")
+        if not private_key:
+            raise RuntimeError("STARKNET_PRIVATE_KEY is required")
+
+        account_config_path = ""
+        if account_config:
+            account_config_path = account_config
+        elif account_addr and ("/" in account_addr or "\\" in account_addr or account_addr.endswith(".json")):
+            account_config_path = account_addr
+
+        if not account_config_path:
+            raise RuntimeError(
+                "Starkli requires an account config file path. "
+                "Set STARKNET_ACCOUNT_CONFIG=/path/to/account.json (or set STARKNET_ACCOUNT_ADDRESS to that path)."
+            )
+
+        expanded_account_path = str(Path(account_config_path).expanduser())
+        if not os.path.isfile(expanded_account_path):
+            raise RuntimeError(
+                f"Starkli account config file not found: {expanded_account_path}. "
+                "Generate one with: starkli account fetch <ACCOUNT_ADDRESS> --rpc <RPC_URL> --output <PATH>."
+            )
 
         proof_felt = "0x" + proof_commitment[:62]
-        pubkey_felt = "0x" + pubkey_hash[:62]
+        pubkey_felt = pubkey_hash_to_felt(pubkey_hash)
 
         strk_token = os.environ.get(
             "STRK_TOKEN_ADDRESS",
@@ -338,41 +406,80 @@ class TransactionService:
         amount_low = hex(amount_int & ((1 << 128) - 1))
         amount_high = hex(amount_int >> 128)
 
-        result = subprocess.run(
-            [
-                "starkli", "invoke",
-                contract_address,
-                "execute_with_proof",
-                strk_token,
-                transfer_selector,
-                "3",
-                to_address,
-                amount_low,
-                amount_high,
-                proof_felt,
-                pubkey_felt,
-                str(nonce),
-                "--rpc", rpc,
-                "--private-key", private_key,
-                "--account", account_addr,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
+        cmd = [
+            "starkli", "invoke",
+            contract_address,
+            "execute_with_proof",
+            strk_token,
+            transfer_selector,
+            "3",
+            to_address,
+            amount_low,
+            amount_high,
+            proof_felt,
+            pubkey_felt,
+            str(nonce),
+            "--rpc", rpc,
+            "--private-key", private_key,
+            "--account", expanded_account_path,
+        ]
 
-        if result.returncode != 0:
-            raise RuntimeError(f"starkli invoke failed: {result.stderr}")
-
-        tx_hash = ""
-        combined = result.stdout + "\n" + result.stderr
-        for line in combined.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("0x") and len(stripped) > 10:
-                tx_hash = stripped
+        max_retries = int(os.environ.get("STARKNET_SUBMIT_MAX_RETRIES", "3"))
+        result = None
+        for attempt in range(max_retries):
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0:
                 break
 
+            detail = (result.stderr or result.stdout or "").strip()
+            nonce_error = self._is_nonce_error(detail)
+            if nonce_error and attempt < max_retries - 1:
+                time.sleep(1.2 * (attempt + 1))
+                continue
+
+            raise RuntimeError(f"starkli invoke failed: {result.stderr}")
+
+        if result is None or result.returncode != 0:
+            raise RuntimeError("starkli invoke failed after retries")
+
+        combined = (result.stdout or "") + "\n" + (result.stderr or "")
+        tx_hash = self._extract_starknet_tx_hash(combined)
+
         return {"tx_hash": tx_hash, "status": "submitted"}
+
+    @staticmethod
+    def _extract_starknet_tx_hash(output: str) -> str:
+        """Extract tx hash from starkli output in either labeled or raw formats."""
+        text = output or ""
+
+        labeled = re.search(
+            r"(?:transaction_hash|tx_hash)\s*[:=]\s*(0x[0-9a-fA-F]{40,66})",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if labeled:
+            return labeled.group(1)
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if re.fullmatch(r"0x[0-9a-fA-F]{40,66}", stripped):
+                return stripped
+
+        fallback = re.findall(r"0x[0-9a-fA-F]{40,66}", text)
+        return fallback[0] if fallback else ""
+
+    @staticmethod
+    def _is_nonce_error(detail: str) -> bool:
+        normalized = (detail or "").lower()
+        return (
+            "invalid transaction nonce" in normalized
+            or "invalidtransactionnonce" in normalized
+        )
 
     # ── Query ─────────────────────────────────────────────────
 

@@ -1,15 +1,24 @@
 import { useState, useEffect } from "react";
-import { getHealth, getContractStatus, deployContract } from "../api/client";
+import { getHealth, getContractStatus } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Card from "../components/Card";
-import Button from "../components/Button";
+
+function CommandItem({ cmd, desc }) {
+  return (
+    <div className="flex items-center gap-4 group hover:bg-white/5 p-2 rounded transition-colors">
+      <code className="text-neon-cyan font-mono text-sm bg-black/40 border border-neon-cyan/20 px-3 py-1.5 rounded min-w-[220px] group-hover:border-neon-cyan/50 transition-colors shadow-[0_0_5px_rgba(0,0,0,0.5)]">
+        {cmd}
+      </code>
+      <span className="text-gray-400 text-sm group-hover:text-gray-200">
+        {desc}
+      </span>
+    </div>
+  );
+}
 
 export default function ProverStatus() {
   const [health, setHealth] = useState(null);
   const [contract, setContract] = useState(null);
-  const [deploying, setDeploying] = useState(false);
-  const [deployResult, setDeployResult] = useState(null);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function fetch() {
@@ -28,35 +37,6 @@ export default function ProverStatus() {
     }
     fetch();
   }, []);
-
-  async function handleDeploy() {
-    setDeploying(true);
-    setError(null);
-    try {
-      const res = await deployContract();
-      setDeployResult(res.data);
-      // Refresh contract status
-      const cRes = await getContractStatus().catch(() => null);
-      if (cRes) setContract(cRes.data);
-    } catch (err) {
-      setError(
-        err.response?.data?.detail || err.message || "Deployment failed",
-      );
-    } finally {
-      setDeploying(false);
-    }
-  }
-
-  const CommandItem = ({ cmd, desc }) => (
-    <div className="flex items-center gap-4 group hover:bg-white/5 p-2 rounded transition-colors">
-      <code className="text-neon-cyan font-mono text-sm bg-black/40 border border-neon-cyan/20 px-3 py-1.5 rounded min-w-[220px] group-hover:border-neon-cyan/50 transition-colors shadow-[0_0_5px_rgba(0,0,0,0.5)]">
-        {cmd}
-      </code>
-      <span className="text-gray-400 text-sm group-hover:text-gray-200">
-        {desc}
-      </span>
-    </div>
-  );
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -216,43 +196,12 @@ export default function ProverStatus() {
               ) : (
                 <div className="p-4 bg-white/5 rounded-lg border border-white/10">
                   <p className="text-gray-400 text-sm mb-4">
-                    Contract not detected on chain. Deploy to enable settlement.
+                    Contract status is unavailable from health metadata.
                   </p>
-                  <Button
-                    onClick={handleDeploy}
-                    disabled={deploying}
-                    variant="primary"
-                    className="w-full justify-center"
-                  >
-                    {deploying ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                        Deploying to Sepolia...
-                      </span>
-                    ) : (
-                      "INITIALIZE DEPLOYMENT"
-                    )}
-                  </Button>
-                  <p className="text-xs text-gray-600 mt-2 text-center">
-                    Uses server-side account credentials
+                  <p className="text-xs text-gray-500 mt-2">
+                    In v2, user wallets are deployed automatically during registration.
+                    Use the transfer smoke flow or user deployment-status endpoint to validate chain deployment.
                   </p>
-                </div>
-              )}
-
-              {deployResult && (
-                <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-lg p-4 animate-fade-in">
-                  <p className="text-green-400 text-sm font-bold mb-1">
-                    SUCCESS: Contract Deployed
-                  </p>
-                  <p className="text-gray-400 font-mono text-xs break-all">
-                    {deployResult.contract_address}
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-lg p-4 animate-fade-in">
-                  <p className="text-red-400 text-sm">{error}</p>
                 </div>
               )}
             </div>
@@ -267,12 +216,12 @@ export default function ProverStatus() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
           <CommandItem cmd="make setup" desc="Install dependencies" />
-          <CommandItem cmd="make test-phase1" desc="Test PQC backend" />
+          <CommandItem cmd="make test-v2" desc="Run v2 backend tests" />
           <CommandItem cmd="make build-phase2" desc="Compile Rust prover" />
           <CommandItem cmd="make build-phase3" desc="Compile Cairo contract" />
           <CommandItem cmd="make deploy-contract" desc="Manual deployment" />
           <CommandItem cmd="make test-all" desc="Full test suite" />
-          <CommandItem cmd="make run-api" desc="Start API server" />
+          <CommandItem cmd="make run-v2-api" desc="Start v2 API server" />
           <CommandItem cmd="make frontend-dev" desc="Start UI server" />
         </div>
       </Card>

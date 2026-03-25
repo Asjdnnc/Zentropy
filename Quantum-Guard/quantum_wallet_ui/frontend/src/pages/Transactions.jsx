@@ -15,7 +15,7 @@ export default function Transactions() {
     amount: "",
     nonce: "0",
     data: "",
-    label: "default",
+    user_id: "",
   });
   const [mode, setMode] = useState("sign"); // 'sign' or 'execute'
   const [loading, setLoading] = useState(false);
@@ -24,8 +24,14 @@ export default function Transactions() {
 
   useEffect(() => {
     listWallets()
-      .then((res) => setWallets(res.data.wallets || []))
-      .catch(() => {});
+      .then((res) => {
+        const users = res.data.users || res.data.wallets || [];
+        setWallets(users);
+        if (users.length > 0) {
+          setForm((prev) => ({ ...prev, user_id: prev.user_id || users[0].user_id || users[0].label || "" }));
+        }
+      })
+      .catch(() => { });
   }, []);
 
   function handleChange(e) {
@@ -39,20 +45,22 @@ export default function Transactions() {
     setResult(null);
 
     const payload = {
-      to: form.to,
-      amount: parseFloat(form.amount),
-      nonce: parseInt(form.nonce, 10),
-      data: form.data,
-      label: form.label,
+      user_id: form.user_id,
+      to_address: form.to,
+      amount_strk: parseFloat(form.amount),
     };
 
     try {
-      const fn = mode === "execute" ? executeTransaction : signTransaction;
-      const res = await fn(payload);
+      const res = mode === "execute"
+        ? await executeTransaction(payload)
+        : await signTransaction(payload);
       setResult({ mode, ...res.data });
     } catch (err) {
       setError(
-        err.response?.data?.detail || err.message || "Transaction failed",
+        err.readableMessage ||
+        err.response?.data?.detail ||
+        err.message ||
+        "Transaction failed",
       );
     } finally {
       setLoading(false);
@@ -72,21 +80,19 @@ export default function Transactions() {
       <div className="flex gap-2">
         <button
           onClick={() => setMode("sign")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === "sign"
-              ? "bg-indigo-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:text-white"
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === "sign"
+            ? "bg-indigo-600 text-white"
+            : "bg-gray-800 text-gray-400 hover:text-white"
+            }`}
         >
           Sign Only
         </button>
         <button
           onClick={() => setMode("execute")}
-          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-            mode === "execute"
-              ? "bg-indigo-600 text-white"
-              : "bg-gray-800 text-gray-400 hover:text-white"
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === "execute"
+            ? "bg-indigo-600 text-white"
+            : "bg-gray-800 text-gray-400 hover:text-white"
+            }`}
         >
           Sign + Prove + Execute
         </button>
@@ -103,17 +109,17 @@ export default function Transactions() {
           <div>
             <label className="block text-sm text-gray-400 mb-1">Wallet</label>
             <select
-              name="label"
-              value={form.label}
+              name="user_id"
+              value={form.user_id}
               onChange={handleChange}
               className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
             >
               {wallets.length === 0 ? (
-                <option value="default">default</option>
+                <option value="">No wallet</option>
               ) : (
                 wallets.map((w) => (
-                  <option key={w.label} value={w.label}>
-                    {w.label}
+                  <option key={w.user_id || w.label} value={w.user_id || w.label}>
+                    {w.username || w.email || w.user_id || w.label}
                   </option>
                 ))
               )}

@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: quantum-guard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-quantumguard}
+      POSTGRES_USER: ${POSTGRES_USER:-quantumguard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - quantumguard_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quantumguard} -d ${POSTGRES_DB:-quantumguard}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  quantum-guard-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quantum-guard-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      PROVER_PORT: 8001
+      DB_PATH: /data/quantumguard.db
+      DATABASE_URL: ${DATABASE_URL:-postgresql://quantumguard:${POSTGRES_PASSWORD}@postgres:5432/quantumguard}
+      MERKLE_STORAGE_DIR: /data/merkle_batches
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - quantumguard_data:/data
+
+volumes:
+  quantumguard_data:
+  quantumguard_pgdata:

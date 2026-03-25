@@ -25,13 +25,15 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import time
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Header, Request, Query
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Header, Request, Query, Path
+from pydantic import BaseModel, Field, EmailStr
 
 from ..db.connection import get_db
 from ..models.schemas import (
@@ -46,6 +48,7 @@ from ..services.wallet_service import WalletService
 from ..services.transaction_service import TransactionService
 from ..services.merkle_service import MerkleService
 from ..services.audit_service import AuditService
+from ..services.deployment_service import DeploymentService
 
 logger = logging.getLogger("quantumguard.api")
 
@@ -60,6 +63,15 @@ _merkle_svc = MerkleService(audit_service=_audit_svc)
 _tx_svc = TransactionService(
     key_service=_key_svc, audit_service=_audit_svc, merkle_service=_merkle_svc
 )
+_deploy_svc = DeploymentService(audit_service=_audit_svc)
+
+
+async def _auto_deploy_account_task(account_id: str, org_id: str, user_id: str) -> None:
+    """Background wrapper to deploy account without blocking registration."""
+    try:
+        await _deploy_svc.deploy_account_via_new_connection(account_id, org_id, user_id)
+    except Exception as e:
+        logger.error("Auto deployment task crashed for account %s: %s", account_id, e)
 
 
 # ── Auth Dependency ───────────────────────────────────────
@@ -80,6 +92,7 @@ async def _get_org_id(authorization: str = Header(...)) -> str:
 
 class OrgCreateRequest(BaseModel):
     org_name: str = Field(..., min_length=1, max_length=255)
+    admin_email: EmailStr
     bootstrap_secret: str = Field(..., description="Admin secret for bootstrapping")
 
 
@@ -89,13 +102,14 @@ async def create_organization(req: OrgCreateRequest):
     Create a new organization. Requires bootstrap secret.
     Returns the API key for all subsequent requests.
     """
-    import os
-    expected = os.environ.get("BOOTSTRAP_SECRET", "quantum-guard-bootstrap-2026")
+    expected = os.environ.get("BOOTSTRAP_SECRET", "").strip()
+    if not expected:
+        raise HTTPException(500, "Server misconfigured: BOOTSTRAP_SECRET is not set")
     if req.bootstrap_secret != expected:
         raise HTTPException(403, "Invalid bootstrap secret")
 
     async with get_db() as conn:
-        result = await _wallet_svc.create_organization(conn, req.org_name)
+        result = await _wallet_svc.create_organization(conn, req.org_name, str(req.admin_email))
     return result
 
 
@@ -119,6 +133,22 @@ async def register_user(
             conn, org_id, req.email, req.username, ip_address=ip
         )
 
+        if _deploy_svc.auto_deploy_enabled():
+            await conn.execute(
+                """UPDATE accounts
+                   SET deployment_status = $1, deployment_error_message = NULL, updated_at = $2
+                   WHERE account_id = $3""",
+                "pending",
+                time.time(),
+                result["account_id"],
+            )
+            asyncio.create_task(
+                _auto_deploy_account_task(result["account_id"], org_id, result["user_id"])
+            )
+            result["deployment_status"] = "pending"
+        else:
+            result["deployment_status"] = "counterfactual"
+
     return WalletRegistrationOut(
         user_id=result["user_id"],
         wallet_id=result["wallet_id"],
@@ -126,7 +156,75 @@ async def register_user(
         public_key=result["public_key"],
         public_key_hash=result["public_key_hash"],
         seed_phrase=result["seed_phrase"],
+        deployment_status=result.get("deployment_status", "counterfactual"),
+        deployment_tx_hash=result.get("deployment_tx_hash"),
+        deployment_error_message=result.get("deployment_error_message"),
     )
+
+
+@router.get("/users/{user_id}/deployment-status")
+async def get_user_deployment_status(user_id: str, authorization: str = Header(...)):
+    """Return deployment lifecycle state for a user's account."""
+    await _get_org_id(authorization)
+
+    async with get_db() as conn:
+        data = await _wallet_svc.get_full_user_wallet(conn, user_id)
+
+    if not data:
+        raise HTTPException(404, "User not found")
+
+    account = data.get("account") or {}
+    return {
+        "user_id": user_id,
+        "wallet_id": data["wallet"]["wallet_id"],
+        "deployment_status": account.get("deployment_status", "unknown"),
+        "deployment_tx_hash": account.get("deployment_tx_hash"),
+        "deployment_error_message": account.get("deployment_error_message"),
+        "deployment_attempts": account.get("deployment_attempts", 0),
+        "last_deployment_attempt": account.get("last_deployment_attempt"),
+        "deployed_at": account.get("deployed_at"),
+        "contract_address": account.get("account_address"),
+    }
+
+
+@router.post("/users/{user_id}/deployment/retry")
+async def retry_user_deployment(
+    user_id: str = Path(..., min_length=1),
+    authorization: str = Header(...),
+):
+    """Force a deployment retry for a user's account and return queued status."""
+    org_id = await _get_org_id(authorization)
+
+    async with get_db() as conn:
+        data = await _wallet_svc.get_full_user_wallet(conn, user_id)
+        if not data:
+            raise HTTPException(404, "User not found")
+
+        account = data.get("account") or {}
+        account_id = account.get("account_id")
+        if not account_id:
+            raise HTTPException(400, "No account found for user")
+
+        now = time.time()
+        await conn.execute(
+            """UPDATE accounts
+               SET deployment_status = $1,
+                   deployment_error_message = NULL,
+                   updated_at = $2
+               WHERE account_id = $3""",
+            "pending",
+            now,
+            account_id,
+        )
+
+        asyncio.create_task(_auto_deploy_account_task(account_id, org_id, user_id))
+
+    return {
+        "user_id": user_id,
+        "account_id": account_id,
+        "deployment_status": "pending",
+        "message": "Deployment retry queued",
+    }
 
 
 # ── Wallet Info ───────────────────────────────────────────
@@ -138,6 +236,17 @@ async def get_user_wallet(user_id: str, authorization: str = Header(...)):
 
     async with get_db() as conn:
         data = await _wallet_svc.get_full_user_wallet(conn, user_id)
+
+        if data and data.get("account"):
+            account = data["account"]
+            deployment_status = (account.get("deployment_status") or "").strip().lower()
+            refreshed_balance = await _wallet_svc.refresh_account_balance_from_chain(
+                conn,
+                account.get("account_address", ""),
+                deployed=deployment_status == "deployed",
+            )
+            if refreshed_balance is not None:
+                account["balance_wei"] = refreshed_balance
 
     if not data:
         raise HTTPException(404, "User not found")
@@ -211,6 +320,34 @@ async def get_transaction(tx_id: str, authorization: str = Header(...)):
     await _get_org_id(authorization)
     async with get_db() as conn:
         tx = await _tx_svc.get_transaction(conn, tx_id)
+        if tx and tx.get("tx_hash") and tx.get("status") in {"submitted", "pending"}:
+            chain = await _tx_svc.get_transaction_status_from_starknet(tx["tx_hash"])
+            chain_status = (chain or {}).get("status")
+            if chain_status == "confirmed":
+                now = time.time()
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2, confirmed_at = $3
+                       WHERE tx_id = $4""",
+                    "confirmed",
+                    "confirmed",
+                    now,
+                    tx_id,
+                )
+                tx["status"] = "confirmed"
+                tx["starknet_status"] = "confirmed"
+                tx["confirmed_at"] = now
+            elif chain_status == "rejected":
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2
+                       WHERE tx_id = $3""",
+                    "rejected",
+                    "rejected",
+                    tx_id,
+                )
+                tx["status"] = "rejected"
+                tx["starknet_status"] = "rejected"
     if not tx:
         raise HTTPException(404, "Transaction not found")
 
@@ -227,7 +364,7 @@ async def get_transaction(tx_id: str, authorization: str = Header(...)):
 
 @router.get("/users/{user_id}/transactions")
 async def list_user_transactions(
-    user_id: str,
+    user_id: str = Path(..., min_length=1),
     authorization: str = Header(...),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
@@ -323,6 +460,15 @@ async def force_finalize_batch(authorization: str = Header(...)):
 
 # ── Audit Log ─────────────────────────────────────────────
 
+@router.get("/audit/verify-chain")
+async def verify_audit_chain(authorization: str = Header(...)):
+    """Verify the integrity of the full audit chain."""
+    org_id = await _get_org_id(authorization)
+    async with get_db() as conn:
+        result = await _audit_svc.verify_chain_integrity(conn, org_id)
+    return result
+
+
 @router.get("/audit/{user_id}")
 async def get_user_audit_log(
     user_id: str,
@@ -337,21 +483,13 @@ async def get_user_audit_log(
     return {"user_id": user_id, "audit_logs": logs}
 
 
-@router.get("/audit/verify-chain")
-async def verify_audit_chain(authorization: str = Header(...)):
-    """Verify the integrity of the full audit chain."""
-    org_id = await _get_org_id(authorization)
-    async with get_db() as conn:
-        result = await _audit_svc.verify_chain_integrity(conn, org_id)
-    return result
-
-
 # ── Health ────────────────────────────────────────────────
 
 @router.get("/health", response_model=HealthOut)
 async def health():
     """Service health check."""
     db_status = "disconnected"
+    prover_status = "not_configured"
     try:
         async with get_db() as conn:
             await conn.fetchval("SELECT 1")
@@ -359,7 +497,19 @@ async def health():
     except Exception:
         pass
 
+    prover_url = os.environ.get("PROVER_URL", "").strip()
+    if prover_url:
+        import httpx
+
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(f"{prover_url.rstrip('/')}/health")
+            prover_status = "connected" if res.status_code == 200 else "degraded"
+        except Exception:
+            prover_status = "disconnected"
+
     return HealthOut(
         status="ok" if db_status == "connected" else "degraded",
         database=db_status,
+        prover=prover_status,
     )

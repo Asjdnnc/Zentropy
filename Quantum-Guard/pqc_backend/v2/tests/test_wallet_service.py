@@ -52,6 +52,8 @@ class TestUserRegistration:
         assert "wallet_id" in result
         assert "seed_phrase" in result
         assert "contract_address" in result
+        assert result["sender_model"] == "relayer"
+        assert "submitter_address" in result
 
         # Seed phrase should be 24 words
         words = result["seed_phrase"].split()
@@ -105,3 +107,36 @@ class TestUserRegistration:
         )
         users = await wallet_service.list_users(conn, test_org["org_id"])
         assert len(users) >= 2
+
+    async def test_update_sender_profile_relayer(self, wallet_service, conn, test_org):
+        reg = await wallet_service.register_user(
+            conn, org_id=test_org["org_id"], email="sender-relayer@example.com",
+        )
+
+        updated = await wallet_service.update_sender_profile(
+            conn,
+            user_id=reg["user_id"],
+            sender_model="relayer",
+            submitter_address="0x" + "1" * 64,
+            submitter_account_config="/tmp/relayer-account.json",
+            submitter_private_key="",
+        )
+
+        assert updated["sender_model"] == "relayer"
+        assert updated["submitter_address"].startswith("0x")
+        assert updated["private_key_configured"] is False
+
+    async def test_update_sender_profile_user_account_requires_private_key(self, wallet_service, conn, test_org):
+        reg = await wallet_service.register_user(
+            conn, org_id=test_org["org_id"], email="sender-user@example.com",
+        )
+
+        with pytest.raises(ValueError, match="requires submitter_private_key"):
+            await wallet_service.update_sender_profile(
+                conn,
+                user_id=reg["user_id"],
+                sender_model="user_account",
+                submitter_address="0x" + "2" * 64,
+                submitter_account_config="/tmp/user-account.json",
+                submitter_private_key=None,
+            )

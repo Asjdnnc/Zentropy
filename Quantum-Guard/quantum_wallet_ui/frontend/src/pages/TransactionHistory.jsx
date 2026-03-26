@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { getTransactionHistory, getTransactionStatus, getActiveUserId } from "../api/client";
+import {
+  getTransactionHistory,
+  getTransactionStatus,
+  getActiveUserId,
+  setActiveUserId,
+  listWallets,
+} from "../api/client";
 import StatusBadge from "../components/StatusBadge";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -10,6 +16,7 @@ const STATUS_MAP = {
   submitted: "pending",
   confirmed: "ready",
   executed: "ready",
+  failed: "error",
   proof_failed: "error",
   submission_failed: "error",
   rejected: "error",
@@ -18,7 +25,11 @@ const STATUS_MAP = {
 
 function formatTime(timestamp) {
   if (!timestamp) return "—";
-  const d = new Date(timestamp * 1000);
+  const numeric = Number(timestamp);
+  const d = Number.isFinite(numeric)
+    ? new Date((numeric > 1e12 ? numeric : numeric * 1000))
+    : new Date(timestamp);
+  if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString();
 }
 
@@ -30,13 +41,47 @@ export default function TransactionHistory() {
   const [loading, setLoading] = useState(true);
   const [selectedTx, setSelectedTx] = useState(null);
   const [statusDetail, setStatusDetail] = useState(null);
+  const [wallets, setWallets] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(getActiveUserId());
   const limit = 20;
+
+  const filteredTransactions = transactions.filter((tx) => {
+    if (filter.status) {
+      const txStatus = String(tx.status || "").toLowerCase();
+      const wanted = String(filter.status || "").toLowerCase();
+      if (txStatus !== wanted) return false;
+    }
+
+    if (filter.label) {
+      const target = `${tx.account_id || ""} ${tx.tx_id || ""} ${tx.to_address || ""}`.toLowerCase();
+      if (!target.includes(filter.label.toLowerCase())) return false;
+    }
+
+    return true;
+  });
+
+  const filteredTotal = filteredTransactions.length;
+
+  const fetchWalletList = useCallback(async () => {
+    try {
+      const res = await listWallets(200, 0);
+      const users = res.data.users || [];
+      setWallets(users);
+
+      if (!selectedUserId && users.length > 0) {
+        const first = users[0].user_id;
+        setSelectedUserId(first);
+        setActiveUserId(first);
+      }
+    } catch {
+      setWallets([]);
+    }
+  }, [selectedUserId]);
 
   const fetchHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const activeUserId = getActiveUserId();
-      if (!activeUserId) {
+      if (!selectedUserId) {
         setTransactions([]);
         setTotal(0);
         return;
@@ -44,7 +89,7 @@ export default function TransactionHistory() {
       const params = { limit, offset: page * limit };
       // Backend endpoint only supports: user_id, limit, offset
       // Note: label and status filtering needs to be done on the frontend
-      const res = await getTransactionHistory({ ...params, user_id: activeUserId });
+      const res = await getTransactionHistory({ ...params, user_id: selectedUserId });
       setTransactions(res.data.transactions || []);
       setTotal(res.data.total || 0);
     } catch {
@@ -52,7 +97,11 @@ export default function TransactionHistory() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, selectedUserId]);
+
+  useEffect(() => {
+    fetchWalletList();
+  }, [fetchWalletList]);
 
   useEffect(() => {
     fetchHistory();
@@ -98,6 +147,25 @@ export default function TransactionHistory() {
 
       {/* Filters */}
       <Card className="flex flex-wrap gap-3 items-center p-4">
+        <div className="min-w-[220px]">
+          <select
+            value={selectedUserId}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSelectedUserId(value);
+              setActiveUserId(value);
+              setPage(0);
+            }}
+            className={`${inputClass} appearance-none cursor-pointer`}
+          >
+            <option value="">Select Wallet</option>
+            {wallets.map((w) => (
+              <option key={w.user_id} value={w.user_id}>
+                {w.username || w.email || w.user_id}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex-1 min-w-[200px]">
           <input
             type="text"
@@ -140,7 +208,7 @@ export default function TransactionHistory() {
               SYNCING LEDGER...
             </div>
           </div>
-        ) : transactions.length === 0 ? (
+        ) : filteredTransactions.length === 0 ? (
           <div className="p-12 text-center text-gray-500 italic">
             No transactions found matching criteria.
           </div>
@@ -160,7 +228,7 @@ export default function TransactionHistory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {transactions.map((tx) => (
+                {filteredTransactions.map((tx) => (
                   <tr
                     key={tx.tx_id}
                     className="hover:bg-white/5 transition-colors group"
@@ -225,7 +293,7 @@ export default function TransactionHistory() {
             Previous
           </Button>
           <span className="text-gray-400 text-sm self-center font-orbitron">
-            PAGE {page + 1} OF {Math.ceil(total / limit)}
+            PAGE {page + 1} OF {Math.ceil(total / limit)} {filteredTotal !== total ? `(filtered ${filteredTotal})` : ""}
           </span>
           <Button
             disabled={(page + 1) * limit >= total}
@@ -342,9 +410,45 @@ export default function TransactionHistory() {
                       Last Updated
                     </span>
                     <span className="text-white text-sm">
-                      {formatTime(statusDetail.updated_at)}
+                      {formatTime(statusDetail.confirmed_at || statusDetail.created_at)}
                     </span>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
+                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
+                      Sender Account
+                    </span>
+                    <p className="text-gray-300 font-mono text-xs break-all">
+                      {statusDetail.sender_account_address || "—"}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
+                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
+                      {statusDetail.submission_mode === "relayer" ? "Relayer" : "Submitted By"}
+                    </span>
+                    <p className="text-gray-300 font-mono text-xs break-all">
+                      {statusDetail.submitted_by_address || "—"}
+                    </p>
+                    <p className="text-gray-500 text-[11px] mt-2 uppercase tracking-wider">
+                      Mode: {statusDetail.submission_mode || "relayer"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-white/5 rounded-lg border border-white/5">
+                  <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
+                    Prover Backend
+                  </span>
+                  <p className="text-neon-cyan font-mono text-xs break-all">
+                    {statusDetail.prover_backend || "unknown"}
+                  </p>
+                  {statusDetail.prover_fallback_reason && (
+                    <p className="text-yellow-300 font-mono text-[11px] mt-2 break-all">
+                      fallback: {statusDetail.prover_fallback_reason}
+                    </p>
+                  )}
                 </div>
 
                 {statusDetail.starknet_receipt && (

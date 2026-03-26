@@ -68,6 +68,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     wallet_id           TEXT NOT NULL REFERENCES wallets(wallet_id),
     blockchain          TEXT NOT NULL DEFAULT 'STARKNET',
     account_address     TEXT NOT NULL,
+    sender_model        TEXT NOT NULL DEFAULT 'relayer',
+    submitter_address   TEXT,
+    submitter_account_config TEXT,
+    submitter_private_key_encrypted TEXT,
     public_key_pq       TEXT NOT NULL,
     public_key_pq_hash  TEXT NOT NULL,
     contract_class_hash TEXT,
@@ -201,6 +205,15 @@ ALTER TABLE organizations ADD COLUMN admin_email TEXT;
 ALTER TABLE accounts ADD COLUMN deployment_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE accounts ADD COLUMN last_deployment_attempt REAL;
 ALTER TABLE accounts ADD COLUMN deployment_error_message TEXT;
+ALTER TABLE accounts ADD COLUMN sender_model TEXT NOT NULL DEFAULT 'relayer';
+ALTER TABLE accounts ADD COLUMN submitter_address TEXT;
+ALTER TABLE accounts ADD COLUMN submitter_account_config TEXT;
+ALTER TABLE accounts ADD COLUMN submitter_private_key_encrypted TEXT;
+ALTER TABLE transactions ADD COLUMN sender_account_address TEXT;
+ALTER TABLE transactions ADD COLUMN submitted_by_address TEXT;
+ALTER TABLE transactions ADD COLUMN submission_mode TEXT NOT NULL DEFAULT 'relayer';
+ALTER TABLE transactions ADD COLUMN prover_backend TEXT;
+ALTER TABLE transactions ADD COLUMN prover_fallback_reason TEXT;
 """
 
 

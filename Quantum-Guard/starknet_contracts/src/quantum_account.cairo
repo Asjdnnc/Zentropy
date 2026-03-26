@@ -51,7 +51,8 @@ pub trait IQuantumGuardAccount<TContractState> {
 #[starknet::contract]
 pub mod QuantumGuardAccount {
     use super::IQuantumGuardAccount;
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address, SyscallResultTrait};
+    use starknet::syscalls::call_contract_syscall;
     use starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess,
         Map, StorageMapReadAccess, StorageMapWriteAccess,
@@ -171,9 +172,9 @@ pub mod QuantumGuardAccount {
                 proof_commitment: proof_commitment,
             });
 
-            // 7. Execute the call
-            // In production, this would use starknet::call_contract_syscall
-            // For PoC, we mark success and the relayer handles execution
+            // 7. Execute the downstream call (e.g. STRK transfer)
+            let _retdata = call_contract_syscall(to, selector, calldata.span()).unwrap_syscall();
+
             true
         }
 

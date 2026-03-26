@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo } from "../api/client";
+import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo, setActiveUserId } from "../api/client";
 import { useWallet } from "../context/WalletContext";
 import Card from "../components/Card";
 import Button from "../components/Button";
@@ -100,7 +100,11 @@ export default function SendTokens() {
     }, []);
 
     function handleChange(e) {
-        setForm({ ...form, [e.target.name]: e.target.value });
+        const { name, value } = e.target;
+        if (name === "user_id") {
+            setActiveUserId(value);
+        }
+        setForm({ ...form, [name]: value });
     }
 
     function validateAddress(addr) {
@@ -143,6 +147,7 @@ export default function SendTokens() {
         setPollTimedOut(false);
 
         try {
+            setActiveUserId(form.user_id);
             const res = await executeTransfer({
                 user_id: form.user_id,
                 to_address: form.to_address,
@@ -372,6 +377,13 @@ export default function SendTokens() {
                                         </div>
                                     </div>
 
+                                    <div className="p-3 bg-black/20 rounded-lg">
+                                        <span className="text-gray-500 block text-xs mb-1">PROVER BACKEND</span>
+                                        <span className="text-neon-cyan font-mono text-xs">
+                                            {result.prover_backend || "unknown"}
+                                        </span>
+                                    </div>
+
                                     {result.starknet_tx_hash && (
                                         <div className="p-3 bg-black/20 rounded-lg">
                                             <span className="text-gray-500 block text-xs mb-1">STARKNET TX</span>
@@ -397,13 +409,13 @@ export default function SendTokens() {
                                     {txStatus && (
                                         <div className={`p-3 rounded-lg border ${txStatus.status === 'confirmed'
                                             ? 'bg-green-900/20 border-green-500/20'
-                                            : txStatus.status === 'rejected'
+                                            : txStatus.status === 'rejected' || txStatus.status === 'failed'
                                                 ? 'bg-red-900/20 border-red-500/20'
                                                 : 'bg-blue-900/20 border-blue-500/20'
                                             }`}>
                                             <span className="text-gray-500 block text-xs mb-1">ON-CHAIN STATUS</span>
                                             <span className={`font-mono text-sm ${txStatus.status === 'confirmed' ? 'text-green-400' :
-                                                txStatus.status === 'rejected' ? 'text-red-400' :
+                                                txStatus.status === 'rejected' || txStatus.status === 'failed' ? 'text-red-400' :
                                                     'text-blue-400'
                                                 }`}>
                                                 {txStatus.status.toUpperCase()}

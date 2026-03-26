@@ -49,6 +49,21 @@ class WalletService:
         self.key_svc = key_service or KeyService()
         self.audit_svc = audit_service or AuditService()
 
+    @staticmethod
+    def _default_sender_model() -> str:
+        mode = (os.environ.get("STARKNET_SUBMISSION_MODE", "relayer") or "").strip().lower()
+        return mode or "relayer"
+
+    @staticmethod
+    def _default_submitter_address() -> Optional[str]:
+        value = (os.environ.get("STARKNET_RELAYER_ADDRESS", "") or "").strip()
+        if value:
+            return value
+        fallback = (os.environ.get("STARKNET_ACCOUNT_ADDRESS", "") or "").strip()
+        if fallback.startswith("0x"):
+            return fallback
+        return None
+
     # ── Organization ──────────────────────────────────────────
 
     async def create_organization(self, conn, org_name: str, admin_email: str) -> dict:
@@ -172,15 +187,20 @@ class WalletService:
             f"quantumguard:{pk_hash}:{wallet_id}".encode()
         ).hexdigest()
         counterfactual_address = "0x" + address_seed[:62]
+        sender_model = self._default_sender_model()
+        submitter_address = self._default_submitter_address()
+        submitter_account_config = (os.environ.get("STARKNET_ACCOUNT_CONFIG", "") or "").strip() or None
 
         await conn.execute(
             """INSERT INTO accounts
                (account_id, wallet_id, blockchain, account_address,
+                sender_model, submitter_address, submitter_account_config,
                 public_key_pq, public_key_pq_hash,
                 deployment_status, nonce, balance_wei,
                 created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)""",
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)""",
             account_id, wallet_id, "STARKNET", counterfactual_address,
+            sender_model, submitter_address, submitter_account_config,
             pk_b64, pk_hash,
             DeploymentStatus.COUNTERFACTUAL.value, 0, "0", now, now,
         )
@@ -190,7 +210,12 @@ class WalletService:
             conn, org_id, user_id,
             AuditEntityType.WALLET.value, wallet_id,
             AuditAction.WALLET_CREATED.value,
-            details={"pk_hash": pk_hash, "account_address": counterfactual_address},
+            details={
+                "pk_hash": pk_hash,
+                "account_address": counterfactual_address,
+                "sender_model": sender_model,
+                "submitter_address": submitter_address,
+            },
         )
 
         logger.info(
@@ -202,6 +227,8 @@ class WalletService:
             "wallet_id": wallet_id,
             "account_id": account_id,
             "contract_address": counterfactual_address,
+            "sender_model": sender_model,
+            "submitter_address": submitter_address,
             "public_key": pk_b64,
             "public_key_hash": pk_hash,
             "seed_phrase": seed_phrase,
@@ -228,6 +255,30 @@ class WalletService:
         return await conn.fetchrow(
             "SELECT * FROM accounts WHERE account_address = $1", address
         )
+
+    async def identify_misdeployed_accounts(
+        self,
+        conn,
+        factory_address: Optional[str] = None,
+    ) -> list[dict]:
+        """Find deployed accounts that still point at the factory address."""
+        resolved_factory = (factory_address or os.environ.get("STARKNET_FACTORY_ADDRESS", "") or "").strip()
+        if not resolved_factory:
+            cmd = (os.environ.get("WALLET_DEPLOY_COMMAND", "") or "").strip()
+            candidates = re.findall(r"0x[0-9a-fA-F]{40,66}", cmd)
+            resolved_factory = candidates[0] if candidates else ""
+
+        if not resolved_factory:
+            return []
+
+        rows = await conn.fetch(
+            """SELECT account_id, wallet_id, account_address, deployment_status, deployment_tx_hash, updated_at
+               FROM accounts
+               WHERE LOWER(account_address) = LOWER($1)
+                 AND LOWER(deployment_status) = 'deployed'""",
+            resolved_factory,
+        )
+        return [dict(row) for row in rows]
 
     async def get_full_user_wallet(self, conn, user_id: str) -> Optional[dict]:
         """Fetch user + wallet + account in one shot."""
@@ -256,7 +307,8 @@ class WalletService:
     ) -> list[dict]:
         rows = await conn.fetch(
             """SELECT u.user_id, u.email, u.username, u.kyc_status,
-                      w.wallet_id, a.account_address, a.deployment_status, a.balance_wei
+                     w.wallet_id, a.account_address, a.deployment_status, a.balance_wei,
+                     a.sender_model, a.submitter_address
                FROM users u
                LEFT JOIN wallets w ON u.user_id = w.user_id
                LEFT JOIN accounts a ON w.wallet_id = a.wallet_id
@@ -266,6 +318,77 @@ class WalletService:
             org_id, limit, offset,
         )
         return [dict(r) for r in rows]
+
+    async def update_sender_profile(
+        self,
+        conn,
+        user_id: str,
+        sender_model: str,
+        submitter_address: Optional[str],
+        submitter_account_config: Optional[str],
+        submitter_private_key: Optional[str],
+    ) -> dict:
+        """Update account sender profile for a user (relayer or user_account)."""
+        wallet = await self.get_wallet_by_user(conn, user_id)
+        if not wallet:
+            raise ValueError(f"Wallet not found for user {user_id}")
+
+        wallet_dict = dict(wallet)
+        account = await self.get_account_by_wallet(conn, wallet_dict["wallet_id"])
+        if not account:
+            raise ValueError(f"Account not found for wallet {wallet_dict['wallet_id']}")
+
+        account_dict = dict(account)
+        normalized_model = (sender_model or "relayer").strip().lower()
+        if normalized_model not in {"relayer", "user_account"}:
+            raise ValueError("sender_model must be one of: relayer, user_account")
+
+        normalized_submitter = (submitter_address or "").strip() or None
+        normalized_config = (submitter_account_config or "").strip() or None
+
+        encrypted_submitter_pk = account_dict.get("submitter_private_key_encrypted")
+        if submitter_private_key is not None:
+            normalized_pk = submitter_private_key.strip()
+            encrypted_submitter_pk = (
+                self.key_svc.encrypt_secret_key(normalized_pk.encode("utf-8"))
+                if normalized_pk
+                else None
+            )
+
+        if normalized_model == "user_account":
+            if not normalized_submitter or not normalized_submitter.startswith("0x"):
+                raise ValueError("user_account mode requires submitter_address (0x...)")
+            if not normalized_config:
+                raise ValueError("user_account mode requires submitter_account_config path")
+            if not encrypted_submitter_pk:
+                raise ValueError("user_account mode requires submitter_private_key")
+
+        now = time.time()
+        await conn.execute(
+            """UPDATE accounts
+               SET sender_model = $1,
+                   submitter_address = $2,
+                   submitter_account_config = $3,
+                   submitter_private_key_encrypted = $4,
+                   updated_at = $5
+               WHERE account_id = $6""",
+            normalized_model,
+            normalized_submitter,
+            normalized_config,
+            encrypted_submitter_pk,
+            now,
+            account_dict["account_id"],
+        )
+
+        return {
+            "user_id": user_id,
+            "wallet_id": wallet_dict["wallet_id"],
+            "account_id": account_dict["account_id"],
+            "sender_model": normalized_model,
+            "submitter_address": normalized_submitter,
+            "submitter_account_config": normalized_config,
+            "private_key_configured": bool(encrypted_submitter_pk),
+        }
 
     # ── Account Deployment ────────────────────────────────────
 
@@ -463,3 +586,92 @@ class WalletService:
         if row and (now - dict(row)["updated_at"]) < ttl:
             return dict(row)["balance_wei"]
         return None
+
+    # ── Deployment Recovery ────────────────────────────────────
+
+    async def identify_misdeployed_accounts(self, conn, org_id: Optional[str] = None) -> list[dict]:
+        """
+        Find accounts that have the factory address stored instead of deployed account address.
+        These accounts cannot send tokens because execute_with_proof() doesn't exist on factory.
+        Returns list of affected accounts for redeployment.
+        """
+        FACTORY_ADDRESS = "0x06c7f300f61309e954c1f56b5bad6b71af50d087ba8f8286ffbbad233bf41e21"
+
+        if org_id:
+            rows = await conn.fetch(
+                """SELECT a.account_id, a.wallet_id, a.account_address, a.deployment_status,
+                          a.public_key_pq_hash, w.user_id, u.org_id
+                   FROM accounts a
+                   JOIN wallets w ON a.wallet_id = w.wallet_id
+                   JOIN users u ON w.user_id = u.user_id
+                   WHERE a.account_address = $1
+                   AND a.deployment_status = 'deployed'
+                   AND u.org_id = $2""",
+                FACTORY_ADDRESS,
+                org_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """SELECT a.account_id, a.wallet_id, a.account_address, a.deployment_status,
+                          a.public_key_pq_hash, w.user_id, u.org_id
+                   FROM accounts a
+                   JOIN wallets w ON a.wallet_id = w.wallet_id
+                   JOIN users u ON w.user_id = u.user_id
+                   WHERE a.account_address = $1
+                   AND a.deployment_status = 'deployed'""",
+                FACTORY_ADDRESS,
+            )
+
+        return [dict(row) for row in rows]
+
+    async def mark_accounts_for_redeployment(
+        self, conn, account_ids: list[str]
+    ) -> int:
+        """
+        Mark misdeployed accounts for redeployment.
+        Sets status to 'pending' so deployment service will fix them on next deployment attempt.
+        """
+        if not account_ids:
+            return 0
+
+        now = time.time()
+        count = await conn.execute(
+            """UPDATE accounts
+               SET deployment_status = 'pending',
+                   deployment_error_message = NULL,
+                   updated_at = $1
+               WHERE account_id = ANY($2)""",
+            now,
+            account_ids,
+        )
+        logger.info("Marked %d accounts for redeployment to fix factory address issue", len(account_ids))
+        return len(account_ids)
+
+    async def get_deployment_recovery_status(self, conn, account_id: str) -> dict:
+        """Get detailed status of a deployment for recovery diagnostics."""
+        account = await conn.fetchrow(
+            """SELECT account_id, wallet_id, account_address, deployment_status,
+                      deployment_attempts, deployment_tx_hash, deployment_error_message,
+                      last_deployment_attempt, deployed_at
+               FROM accounts WHERE account_id = $1""",
+            account_id,
+        )
+
+        if not account:
+            return {"status": "not_found"}
+
+        account_dict = dict(account)
+        FACTORY_ADDRESS = "0x06c7f300f61309e954c1f56b5bad6b71af50d087ba8f8286ffbbad233bf41e21"
+        is_factory = account_dict.get("account_address", "").lower() == FACTORY_ADDRESS.lower()
+
+        return {
+            "account_id": account_dict["account_id"],
+            "status": account_dict["deployment_status"],
+            "has_factory_address": is_factory,
+            "stored_address": account_dict.get("account_address"),
+            "deployment_attempts": account_dict.get("deployment_attempts", 0),
+            "last_deployment_attempt": account_dict.get("last_deployment_attempt"),
+            "deployment_error": account_dict.get("deployment_error_message"),
+            "deployed_at": account_dict.get("deployed_at"),
+            "recovery_needed": is_factory and account_dict["deployment_status"] == "deployed",
+        }

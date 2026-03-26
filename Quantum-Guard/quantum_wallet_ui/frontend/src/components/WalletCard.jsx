@@ -10,6 +10,8 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
     const isDeployed = wallet.deployment_status === 'deployed' && wallet.contract_address;
     const isFailed = wallet.deployment_status === 'failed';
     const identityHash = wallet.pubkey_hash || wallet.public_key_hash || '';
+    const senderModel = wallet.sender_model || 'relayer';
+    const submitterAddress = wallet.submitter_address || '';
 
     const statusColor = isDeployed
         ? 'text-green-400 bg-green-500/10 border-green-500/20'
@@ -171,6 +173,20 @@ export default function WalletCard({ wallet, balance, onSelect, showActions = tr
                             )}
                         </button>
                     </div>
+                </div>
+
+                <div>
+                    <span className="text-gray-500 text-xs">Sender Mode</span>
+                    <p className="text-gray-300 text-xs mt-0.5 uppercase tracking-wide">
+                        {senderModel}
+                    </p>
+                </div>
+
+                <div>
+                    <span className="text-gray-500 text-xs">Submitter</span>
+                    <p className="text-gray-300 font-mono text-xs break-all mt-0.5">
+                        {submitterAddress ? `${submitterAddress.slice(0, 10)}...${submitterAddress.slice(-8)}` : 'N/A'}
+                    </p>
                 </div>
 
                 {wallet.created_at && (

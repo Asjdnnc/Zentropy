@@ -98,6 +98,7 @@ class DeploymentService:
             tx_hash = deploy_result.get("tx_hash", "")
             deployed_address = deploy_result.get("contract_address", account_address)
             invoke_argv = deploy_result.get("invoke_argv", [])
+            factory_address = self._extract_invoke_contract_address(invoke_argv)
 
             if tx_hash:
                 await conn.execute(
@@ -110,16 +111,54 @@ class DeploymentService:
                     account_id,
                 )
 
-            resolved_address = await self._resolve_deployed_address(
-                expected_address=account_address,
-                invoke_argv=invoke_argv,
-                tx_hash=tx_hash,
-                deadline=confirm_deadline,
-                poll_seconds=confirm_poll,
-            )
-            if resolved_address:
-                deployed_address = resolved_address
+            # CRITICAL FIX: For factory deployments, ALWAYS resolve the actual deployed address
+            # Do not use the naively extracted address if it matches the factory address
+            if factory_address and deployed_address == factory_address:
+                logger.warning(
+                    "Detected factory address as extracted endpoint. "
+                    "Forcing address resolution for account %s (factory=%s)",
+                    account_id, factory_address
+                )
+                resolved_address = await self._resolve_deployed_address(
+                    expected_address=account_address,
+                    invoke_argv=invoke_argv,
+                    tx_hash=tx_hash,
+                    deadline=confirm_deadline,
+                    poll_seconds=confirm_poll,
+                )
+                if resolved_address:
+                    deployed_address = resolved_address
+                    logger.info(
+                        "Resolved deployed address for account %s: %s (was factory: %s)",
+                        account_id, deployed_address, factory_address
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Failed to resolve deployed address for account {account_id}. "
+                        f"Got factory address {factory_address} but could not locate actual account address."
+                    )
+            else:
+                # Standard resolution path for non-factory deployments or when address looks correct
+                resolved_address = await self._resolve_deployed_address(
+                    expected_address=account_address,
+                    invoke_argv=invoke_argv,
+                    tx_hash=tx_hash,
+                    deadline=confirm_deadline,
+                    poll_seconds=confirm_poll,
+                )
+                if resolved_address:
+                    deployed_address = resolved_address
+
             class_hash = deploy_result.get("class_hash", account_dict.get("contract_class_hash"))
+
+            # CRITICAL VALIDATION: Never store factory address as the deployed account address
+            if factory_address and deployed_address == factory_address:
+                raise RuntimeError(
+                    f"CRITICAL: Refusing to deploy account {account_id}. "
+                    f"The resolved address is still the factory contract ({factory_address}). "
+                    f"This would prevent users from sending tokens. "
+                    f"Check factory.get_deployed_address() or deployment tx events for the actual account address."
+                )
 
             await self._wait_for_contract_deployment(
                 deployed_address,
@@ -474,9 +513,15 @@ class DeploymentService:
                 if candidates:
                     resolved = self._normalize_hex(candidates[0])
                     if resolved and not self._is_zero_hex(resolved):
-                        logger.debug("Resolved deployed address from factory call: %s", resolved)
+                        logger.info("Resolved deployed address from factory.get_deployed_address(): %s", resolved)
                         return resolved
                     logger.debug("Ignoring zero-equivalent factory candidate: %s", candidates[0])
+            else:
+                logger.warning(
+                    "factory.get_deployed_address() call failed for expected_address %s. "
+                    "returncode=%d, stderr=%s",
+                    expected_address, result.returncode, (result.stderr or "").strip()[:200]
+                )
 
             await asyncio.sleep(max(poll_seconds, 0.5))
 

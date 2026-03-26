@@ -62,6 +62,13 @@ class WalletCreate(BaseModel):
     wallet_name: str = Field("Default Wallet", max_length=255)
 
 
+class SenderProfileUpdate(BaseModel):
+    sender_model: str = Field("relayer", min_length=3, max_length=32)
+    submitter_address: Optional[str] = Field(None, min_length=3, max_length=255)
+    submitter_account_config: Optional[str] = Field(None, min_length=3, max_length=1024)
+    submitter_private_key: Optional[str] = Field(None, min_length=3, max_length=255)
+
+
 class WalletOut(BaseModel):
     wallet_id: str
     user_id: str
@@ -77,6 +84,8 @@ class WalletRegistrationOut(BaseModel):
     user_id: str
     wallet_id: str
     contract_address: str
+    sender_model: str = "relayer"
+    submitter_address: Optional[str] = None
     public_key: str
     public_key_hash: str
     seed_phrase: str  # shown once
@@ -96,6 +105,8 @@ class AccountOut(BaseModel):
     wallet_id: str
     blockchain: str = "STARKNET"
     account_address: str
+    sender_model: str = "relayer"
+    submitter_address: Optional[str] = None
     public_key_pq_hash: str
     deployment_status: DeploymentStatus = DeploymentStatus.COUNTERFACTUAL
     nonce: int = 0
@@ -118,6 +129,10 @@ class TransactionOut(BaseModel):
     to_address: str
     amount_strk: str
     status: TransactionStatus
+    sender_account_address: Optional[str] = None
+    submitted_by_address: Optional[str] = None
+    submission_mode: Optional[str] = None
+    prover_backend: Optional[str] = None
     proof_commitment: Optional[str] = None
     tx_hash: Optional[str] = None
     created_at: datetime
@@ -129,6 +144,7 @@ class TransactionDetailOut(TransactionOut):
     signature_size: Optional[int] = None
     nonce: int = 0
     proof_valid: Optional[bool] = None
+    prover_fallback_reason: Optional[str] = None
     starknet_status: Optional[str] = None
     error_message: Optional[str] = None
     explorer_url: Optional[str] = None
@@ -139,9 +155,13 @@ class TransferResultOut(BaseModel):
     starknet_tx_hash: Optional[str] = None
     status: str
     proof_valid: bool = False
+    prover_backend: Optional[str] = None
     proof_commitment: Optional[str] = None
     batch_id: Optional[str] = None
     merkle_root_committed: Optional[str] = None
+    sender_account_address: Optional[str] = None
+    submitted_by_address: Optional[str] = None
+    submission_mode: Optional[str] = None
     amount_strk: str = "0.000000"
     explorer_url: Optional[str] = None
     error: Optional[str] = None
@@ -213,6 +233,11 @@ class HealthOut(BaseModel):
     database: str = "connected"
     starknet_rpc: str = "connected"
     prover: str = "unknown"
+    prover_ready: bool = False
+    prover_mode: str = "python_fallback"
+    prover_backend: str = "python_fallback"
+    prover_binary: str = "python_internal"
+    prover_endpoint: Optional[str] = None
 
 
 class PaginatedResponse(BaseModel):

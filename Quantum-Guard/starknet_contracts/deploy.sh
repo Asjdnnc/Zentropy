@@ -30,9 +30,23 @@ CONFIG_FILE="${HOME}/.quantum-guard/contract.json"
 # Load .env from parent directory (Quantum-Guard root)
 ENV_FILE="${CONTRACT_DIR}/../.env"
 if [ -f "${ENV_FILE}" ]; then
-    set -a
-    source "${ENV_FILE}"
-    set +a
+    # Parse only required keys safely (don't execute arbitrary .env contents).
+    while IFS= read -r raw_line || [ -n "${raw_line}" ]; do
+        line="${raw_line%$'\r'}"
+        case "${line}" in
+            ""|\#*) continue ;;
+        esac
+
+        key="${line%%=*}"
+        value="${line#*=}"
+        key="$(echo "${key}" | tr -d '[:space:]')"
+
+        case "${key}" in
+            STARKNET_RPC|STARKNET_PRIVATE_KEY|STARKNET_ACCOUNT_ADDRESS|STARKNET_ACCOUNT_CONFIG|STARKNET_CHAIN_ID)
+                export "${key}=${value}"
+                ;;
+        esac
+    done < "${ENV_FILE}"
 fi
 
 RPC_URL="${STARKNET_RPC:-https://free-rpc.nethermind.io/sepolia-juno/v0_7}"
@@ -40,6 +54,7 @@ RPC_URL="${STARKNET_RPC:-https://free-rpc.nethermind.io/sepolia-juno/v0_7}"
 # Starkli account paths
 ACCOUNT_FILE="${HOME}/.starkli/accounts/quantum-guard.json"
 KEYSTORE_FILE="${HOME}/.starkli/signers/quantum-guard"
+ACTIVE_ACCOUNT_FILE="${STARKNET_ACCOUNT_CONFIG:-${ACCOUNT_FILE}}"
 
 # Parse CLI args
 OWNER_HASH=""
@@ -74,6 +89,23 @@ json_error() {
     fi
 }
 
+extract_labeled_hex() {
+    local output="$1"
+    shift
+    local labels=("$@")
+
+    for label in "${labels[@]}"; do
+        local value
+        value=$(echo "${output}" | grep -i "${label}" | grep -oE '0x[0-9a-fA-F]+' | head -1)
+        if [ -n "${value}" ]; then
+            echo "${value}"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # ─── Checks ─────────────────────────────────────────────────────
 
 echo "=== QuantumGuard Contract Deployment ==="
@@ -104,6 +136,7 @@ if [ -z "${STARKNET_ACCOUNT_ADDRESS}" ]; then
 fi
 
 echo "✓ Deployer account: ${STARKNET_ACCOUNT_ADDRESS:0:16}..."
+echo "  Account config  : ${ACTIVE_ACCOUNT_FILE}"
 
 # ─── Build ───────────────────────────────────────────────────────
 
@@ -146,17 +179,15 @@ echo "  Owner : ${OWNER_HASH:0:16}..."
 echo ""
 echo "Step 2/3: Declaring contract class..."
 
-# Use starkli account file if it exists, otherwise use private-key directly
-if [ -f "${ACCOUNT_FILE}" ]; then
-    # Use the starkli account (recommended)
+# Prefer private key + account config path from env to avoid keystore prompts.
+if [ -f "${ACTIVE_ACCOUNT_FILE}" ]; then
     DECLARE_OUTPUT=$(starkli declare \
         "${SIERRA_FILE}" \
         --rpc "${RPC_URL}" \
-        --account "${ACCOUNT_FILE}" \
-        --keystore "${KEYSTORE_FILE}" \
+        --private-key "${STARKNET_PRIVATE_KEY}" \
+        --account "${ACTIVE_ACCOUNT_FILE}" \
         2>&1) || true
 else
-    # Fallback to raw private key (less secure)
     DECLARE_OUTPUT=$(starkli declare \
         "${SIERRA_FILE}" \
         --rpc "${RPC_URL}" \
@@ -165,14 +196,13 @@ else
         2>&1) || true
 fi
 
-# Extract class hash
-CLASS_HASH=""
-while IFS= read -r line; do
-    if [[ "${line}" =~ 0x[0-9a-fA-F]{50,} ]]; then
-        CLASS_HASH=$(echo "${line}" | grep -oP '0x[0-9a-fA-F]+' | head -1)
-        break
-    fi
-done <<< "${DECLARE_OUTPUT}"
+# Extract class hash from explicit labeled line first.
+CLASS_HASH="$(extract_labeled_hex "${DECLARE_OUTPUT}" "class hash" "declared class")"
+
+# Fallback: choose the first long felt from output.
+if [ -z "${CLASS_HASH}" ]; then
+    CLASS_HASH=$(echo "${DECLARE_OUTPUT}" | grep -oE '0x[0-9a-fA-F]{50,}' | head -1)
+fi
 
 if [ -z "${CLASS_HASH}" ]; then
     if echo "${DECLARE_OUTPUT}" | grep -qi "already declared"; then
@@ -192,18 +222,16 @@ fi
 echo ""
 echo "Step 3/3: Deploying contract instance..."
 
-if [ -f "${ACCOUNT_FILE}" ]; then
-    # Use the starkli account (recommended)
+if [ -f "${ACTIVE_ACCOUNT_FILE}" ]; then
     DEPLOY_OUTPUT=$(starkli deploy \
         "${CLASS_HASH}" \
         "${OWNER_HASH}" \
         "${STARKNET_ACCOUNT_ADDRESS}" \
         --rpc "${RPC_URL}" \
-        --account "${ACCOUNT_FILE}" \
-        --keystore "${KEYSTORE_FILE}" \
+        --private-key "${STARKNET_PRIVATE_KEY}" \
+        --account "${ACTIVE_ACCOUNT_FILE}" \
         2>&1) || true
 else
-    # Fallback to raw private key (less secure)
     DEPLOY_OUTPUT=$(starkli deploy \
         "${CLASS_HASH}" \
         "${OWNER_HASH}" \
@@ -215,13 +243,12 @@ else
 fi
 
 # Extract contract address
-CONTRACT_ADDRESS=""
-while IFS= read -r line; do
-    if [[ "${line}" =~ 0x[0-9a-fA-F]{50,} ]]; then
-        CONTRACT_ADDRESS=$(echo "${line}" | grep -oP '0x[0-9a-fA-F]+' | head -1)
-        break
-    fi
-done <<< "${DEPLOY_OUTPUT}"
+CONTRACT_ADDRESS="$(extract_labeled_hex "${DEPLOY_OUTPUT}" "contract address" "deployed at")"
+
+# Fallback: take the last long felt in output (tx hash usually appears before address).
+if [ -z "${CONTRACT_ADDRESS}" ]; then
+    CONTRACT_ADDRESS=$(echo "${DEPLOY_OUTPUT}" | grep -oE '0x[0-9a-fA-F]{50,}' | tail -1)
+fi
 
 if [ -z "${CONTRACT_ADDRESS}" ]; then
     json_error "Failed to deploy contract: ${DEPLOY_OUTPUT}"

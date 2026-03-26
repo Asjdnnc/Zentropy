@@ -40,7 +40,7 @@ from ..models.schemas import (
     UserCreate, WalletRegistrationOut, TransferRequest,
     TransactionDetailOut, TransferResultOut,
     MerkleBatchOut, MerkleBatchDetailOut, MerkleProofOut,
-    AuditLogOut, HealthOut, OrganizationCreate, OrganizationOut,
+    AuditLogOut, HealthOut, OrganizationCreate, OrganizationOut, SenderProfileUpdate,
 )
 from ..models.enums import STRK_DECIMALS
 from ..services.key_service import KeyService
@@ -64,6 +64,19 @@ _tx_svc = TransactionService(
     key_service=_key_svc, audit_service=_audit_svc, merkle_service=_merkle_svc
 )
 _deploy_svc = DeploymentService(audit_service=_audit_svc)
+
+
+def _resolve_prover_endpoint() -> Optional[str]:
+    configured = (os.environ.get("PROVER_URL", "") or "").strip()
+    if configured:
+        return configured
+
+    port = (os.environ.get("PROVER_PORT", "") or "").strip()
+    if not port:
+        return None
+
+    host = (os.environ.get("PROVER_HOST", "127.0.0.1") or "127.0.0.1").strip()
+    return f"http://{host}:{port}"
 
 
 async def _auto_deploy_account_task(account_id: str, org_id: str, user_id: str) -> None:
@@ -156,6 +169,8 @@ async def register_user(
         public_key=result["public_key"],
         public_key_hash=result["public_key_hash"],
         seed_phrase=result["seed_phrase"],
+        sender_model=result.get("sender_model", "relayer"),
+        submitter_address=result.get("submitter_address"),
         deployment_status=result.get("deployment_status", "counterfactual"),
         deployment_tx_hash=result.get("deployment_tx_hash"),
         deployment_error_message=result.get("deployment_error_message"),
@@ -165,9 +180,12 @@ async def register_user(
 @router.get("/users/{user_id}/deployment-status")
 async def get_user_deployment_status(user_id: str, authorization: str = Header(...)):
     """Return deployment lifecycle state for a user's account."""
-    await _get_org_id(authorization)
+    org_id = await _get_org_id(authorization)
 
     async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User not found")
         data = await _wallet_svc.get_full_user_wallet(conn, user_id)
 
     if not data:
@@ -184,7 +202,39 @@ async def get_user_deployment_status(user_id: str, authorization: str = Header(.
         "last_deployment_attempt": account.get("last_deployment_attempt"),
         "deployed_at": account.get("deployed_at"),
         "contract_address": account.get("account_address"),
+        "sender_model": account.get("sender_model", "relayer"),
+        "submitter_address": account.get("submitter_address"),
+        "submitter_account_config": account.get("submitter_account_config"),
+        "private_key_configured": bool(account.get("submitter_private_key_encrypted")),
     }
+
+
+@router.post("/users/{user_id}/sender-profile")
+async def update_user_sender_profile(
+    user_id: str,
+    req: SenderProfileUpdate,
+    authorization: str = Header(...),
+):
+    """Configure per-user sender profile for relayer or user-account submission."""
+    org_id = await _get_org_id(authorization)
+
+    async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User not found")
+        try:
+            result = await _wallet_svc.update_sender_profile(
+                conn,
+                user_id=user_id,
+                sender_model=req.sender_model,
+                submitter_address=req.submitter_address,
+                submitter_account_config=req.submitter_account_config,
+                submitter_private_key=req.submitter_private_key,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+
+    return result
 
 
 @router.post("/users/{user_id}/deployment/retry")
@@ -232,9 +282,13 @@ async def retry_user_deployment(
 @router.get("/users/{user_id}/wallet")
 async def get_user_wallet(user_id: str, authorization: str = Header(...)):
     """Get user's wallet details including balance and deployment status."""
-    await _get_org_id(authorization)
+    org_id = await _get_org_id(authorization)
 
     async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User not found")
+
         data = await _wallet_svc.get_full_user_wallet(conn, user_id)
 
         if data and data.get("account"):
@@ -260,6 +314,8 @@ async def get_user_wallet(user_id: str, authorization: str = Header(...)):
         "wallet_id": data["wallet"]["wallet_id"],
         "wallet_name": data["wallet"]["wallet_name"],
         "contract_address": account.get("account_address", ""),
+        "sender_model": account.get("sender_model", "relayer"),
+        "submitter_address": account.get("submitter_address"),
         "public_key_hash": account.get("public_key_pq_hash", ""),
         "deployment_status": account.get("deployment_status", "unknown"),
         "nonce": account.get("nonce", 0),
@@ -317,11 +373,28 @@ async def transfer(
 @router.get("/transactions/{tx_id}")
 async def get_transaction(tx_id: str, authorization: str = Header(...)):
     """Get transaction detail."""
-    await _get_org_id(authorization)
+    org_id = await _get_org_id(authorization)
     async with get_db() as conn:
+        owner_org = await conn.fetchval(
+            """SELECT u.org_id
+               FROM transactions t
+               JOIN accounts a ON t.account_id = a.account_id
+               JOIN wallets w ON a.wallet_id = w.wallet_id
+               JOIN users u ON w.user_id = u.user_id
+               WHERE t.tx_id = $1""",
+            tx_id,
+        )
+        if not owner_org or owner_org != org_id:
+            raise HTTPException(404, "Transaction not found")
+
         tx = await _tx_svc.get_transaction(conn, tx_id)
         if tx and tx.get("tx_hash") and tx.get("status") in {"submitted", "pending"}:
-            chain = await _tx_svc.get_transaction_status_from_starknet(tx["tx_hash"])
+            chain = await _tx_svc.get_transaction_status_from_starknet(
+                tx["tx_hash"],
+                expected_from_address=tx.get("sender_account_address"),
+                expected_to_address=tx.get("to_address"),
+                expected_amount_wei=tx.get("amount_wei"),
+            )
             chain_status = (chain or {}).get("status")
             if chain_status == "confirmed":
                 now = time.time()
@@ -348,6 +421,29 @@ async def get_transaction(tx_id: str, authorization: str = Header(...)):
                 )
                 tx["status"] = "rejected"
                 tx["starknet_status"] = "rejected"
+            elif chain_status == "pending":
+                await conn.execute(
+                    """UPDATE transactions
+                       SET starknet_status = $1
+                       WHERE tx_id = $2""",
+                    "pending",
+                    tx_id,
+                )
+                tx["starknet_status"] = "pending"
+            elif chain_status == "failed":
+                err = (chain or {}).get("error") or "Transaction confirmed without STRK transfer"
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2, error_message = $3
+                       WHERE tx_id = $4""",
+                    "failed",
+                    (chain or {}).get("starknet_status") or "failed",
+                    str(err),
+                    tx_id,
+                )
+                tx["status"] = "failed"
+                tx["starknet_status"] = (chain or {}).get("starknet_status") or "failed"
+                tx["error_message"] = str(err)
     if not tx:
         raise HTTPException(404, "Transaction not found")
 
@@ -370,9 +466,13 @@ async def list_user_transactions(
     offset: int = Query(0, ge=0),
 ):
     """List all transactions for a user."""
-    await _get_org_id(authorization)
+    org_id = await _get_org_id(authorization)
 
     async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User wallet not found")
+
         wallet = await _wallet_svc.get_wallet_by_user(conn, user_id)
         if not wallet:
             raise HTTPException(404, "User wallet not found")
@@ -386,6 +486,68 @@ async def list_user_transactions(
             conn, account_dict["account_id"], limit, offset
         )
         total = await _tx_svc.count_transactions(conn, account_dict["account_id"])
+
+        for tx in txs:
+            status = (tx.get("status") or "").lower()
+            tx_hash = tx.get("tx_hash")
+            if not tx_hash or status not in {"submitted", "pending"}:
+                continue
+
+            chain = await _tx_svc.get_transaction_status_from_starknet(
+                tx_hash,
+                expected_from_address=tx.get("sender_account_address"),
+                expected_to_address=tx.get("to_address"),
+                expected_amount_wei=tx.get("amount_wei"),
+            )
+            chain_status = (chain or {}).get("status")
+            if chain_status == "confirmed":
+                now = time.time()
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2, confirmed_at = $3
+                       WHERE tx_id = $4""",
+                    "confirmed",
+                    "confirmed",
+                    now,
+                    tx["tx_id"],
+                )
+                tx["status"] = "confirmed"
+                tx["starknet_status"] = "confirmed"
+                tx["confirmed_at"] = now
+            elif chain_status == "rejected":
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2
+                       WHERE tx_id = $3""",
+                    "rejected",
+                    "rejected",
+                    tx["tx_id"],
+                )
+                tx["status"] = "rejected"
+                tx["starknet_status"] = "rejected"
+            elif chain_status == "pending":
+                await conn.execute(
+                    """UPDATE transactions
+                       SET starknet_status = $1
+                       WHERE tx_id = $2""",
+                    "pending",
+                    tx["tx_id"],
+                )
+                tx["starknet_status"] = "pending"
+            elif chain_status == "failed":
+                err = (chain or {}).get("error") or "Transaction confirmed without STRK transfer"
+                await conn.execute(
+                    """UPDATE transactions
+                       SET status = $1, starknet_status = $2, error_message = $3
+                       WHERE tx_id = $4""",
+                    "failed",
+                    (chain or {}).get("starknet_status") or "failed",
+                    str(err),
+                    tx["tx_id"],
+                )
+                tx["status"] = "failed"
+                tx["starknet_status"] = (chain or {}).get("starknet_status") or "failed"
+                tx["error_message"] = str(err)
 
     # Format amounts
     for tx in txs:
@@ -489,7 +651,13 @@ async def get_user_audit_log(
 async def health():
     """Service health check."""
     db_status = "disconnected"
+    starknet_rpc = os.environ.get("STARKNET_RPC", "unset")
     prover_status = "not_configured"
+    prover_ready = False
+    prover_mode = "python_fallback"
+    prover_backend = "python_fallback"
+    prover_binary = "python_internal"
+    prover_endpoint = None
     try:
         async with get_db() as conn:
             await conn.fetchval("SELECT 1")
@@ -497,19 +665,37 @@ async def health():
     except Exception:
         pass
 
-    prover_url = os.environ.get("PROVER_URL", "").strip()
+    prover_url = _resolve_prover_endpoint()
     if prover_url:
+        prover_endpoint = prover_url
+        prover_binary = prover_url
         import httpx
 
         try:
             async with httpx.AsyncClient(timeout=3.0) as client:
                 res = await client.get(f"{prover_url.rstrip('/')}/health")
-            prover_status = "connected" if res.status_code == 200 else "degraded"
+            if res.status_code == 200:
+                prover_status = "connected"
+                prover_ready = True
+                prover_mode = "rust_http"
+                prover_backend = "rust_http"
+            else:
+                prover_status = "degraded"
+                prover_mode = "fallback"
         except Exception:
             prover_status = "disconnected"
+            prover_mode = "fallback"
+    else:
+        prover_status = "not_configured"
 
     return HealthOut(
         status="ok" if db_status == "connected" else "degraded",
         database=db_status,
+        starknet_rpc=starknet_rpc,
         prover=prover_status,
+        prover_ready=prover_ready,
+        prover_mode=prover_mode,
+        prover_backend=prover_backend,
+        prover_binary=prover_binary,
+        prover_endpoint=prover_endpoint,
     )

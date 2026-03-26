@@ -2,6 +2,8 @@
 
 # pyright: reportMissingImports=false
 
+import os
+
 from starlette.testclient import TestClient
 
 from pqc_backend.v2.app import app
@@ -13,7 +15,7 @@ def _create_org(client: TestClient) -> dict:
         json={
             "org_name": "Validation Test Org",
             "admin_email": "validation-org@example.com",
-            "bootstrap_secret": "test_bootstrap_secret",
+            "bootstrap_secret": os.environ.get("BOOTSTRAP_SECRET", "test_bootstrap_secret"),
         },
     )
     assert response.status_code == 200
@@ -82,3 +84,30 @@ def test_audit_verify_chain_route_not_shadowed() -> None:
         body = response.json()
         assert "valid" in body
         assert "checked" in body
+
+
+    def test_wallet_route_scoped_to_requesting_org() -> None:
+        with TestClient(app) as client:
+            org1 = _create_org(client)
+            org2 = client.post(
+                "/api/v2/org/create",
+                json={
+                    "org_name": "Validation Test Org 2",
+                    "admin_email": "validation-org2@example.com",
+                    "bootstrap_secret": os.environ.get("BOOTSTRAP_SECRET", "test_bootstrap_secret"),
+                },
+            ).json()
+
+            create_user = client.post(
+                "/api/v2/users/register",
+                headers={"Authorization": f"Bearer {org1['api_key']}"},
+                json={"email": "org1-user@example.com", "username": "org1user"},
+            )
+            assert create_user.status_code == 200
+            user_id = create_user.json()["user_id"]
+
+            forbidden_read = client.get(
+                f"/api/v2/users/{user_id}/wallet",
+                headers={"Authorization": f"Bearer {org2['api_key']}"},
+            )
+            assert forbidden_read.status_code == 404

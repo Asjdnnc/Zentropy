@@ -121,6 +121,9 @@ export const getHealth = (options = {}) =>
 export const createOrg = ({ org_name, admin_email, bootstrap_secret }) =>
     api.post(`${V2}/org/create`, { org_name, admin_email, bootstrap_secret });
 
+export const getOrgDetails = (options = {}) =>
+    api.get(`${V2}/org`, { signal: options.signal });
+
 // ─── Users / Wallets ────────────────────────────────────────────
 
 /**

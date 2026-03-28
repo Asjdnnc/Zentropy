@@ -32,9 +32,8 @@ In the second month, we expanded our vision into Phase 2, known as **Zentropy**.
 ### Phase 2 Action Previews
 *(Add your Phase 2 Zentropy images below)*
 
-<!-- Placeholder for Phase 2 Zentropy images -->
-![Phase 2 Image 1 Placeholder]()
-![Phase 2 Image 2 Placeholder]()
+<!-- Zentropy Dashboard Image -->
+![Zentropy Dashboard](assets/zentropy_dashboard.png)
 
 ---
 

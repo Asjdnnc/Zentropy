@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo, setActiveUserId } from "../api/client";
 import { useWallet } from "../context/WalletContext";
-import Card from "../components/Card";
-import Button from "../components/Button";
 
 export default function SendTokens() {
     const [searchParams] = useSearchParams();
@@ -25,7 +23,7 @@ export default function SendTokens() {
     const [pollTimedOut, setPollTimedOut] = useState(false);
     const pollAbortRef = useRef(null);
 
-    const balanceText = (b) => b?.balance_display || b?.balance_strk || "0.000000";
+    const balanceText = (b) => b?.balance_display || b?.balance_strk || "0.000";
 
     const isAbortError = (err) =>
         err?.name === "AbortError" ||
@@ -77,10 +75,7 @@ export default function SendTokens() {
             });
             setBalances(newBalances);
         } catch (err) {
-            if (isAbortError(err)) {
-                return;
-            }
-            // API offline
+            if (isAbortError(err)) return;
         }
     }, [form.user_id]);
 
@@ -155,11 +150,9 @@ export default function SendTokens() {
             });
             setResult(res.data);
 
-            // Refresh balances after transfer
             await refreshAll();
             await fetchWallets();
 
-            // Poll for confirmation if we got a tx hash
             if (res.data.tx_id) {
                 pollTxStatus(res.data.tx_id);
             }
@@ -221,61 +214,62 @@ export default function SendTokens() {
     const selectedBalance = balances[form.user_id];
 
     return (
-        <div className="space-y-8 animate-fade-in">
-            <div>
-                <h1 className="text-3xl font-bold font-orbitron text-white">
-                    Send STRK
-                </h1>
-                <p className="text-gray-400 mt-1">
+        <div className="space-y-8 animate-fade-in text-white font-sans max-w-7xl mx-auto w-full">
+            <div className="mb-8 pl-1">
+                <h1 className="text-2xl font-bold tracking-tight mb-2">Send STRK</h1>
+                <p className="text-gray-400 text-[14px]">
                     Transfer tokens using quantum-resistant signatures (ML-DSA-44)
                 </p>
             </div>
 
             {wallets.length === 0 ? (
-                <Card variant="default" className="text-center py-12">
-                    <p className="text-gray-400 mb-4">
+                <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-12 text-center shadow-xl">
+                    <p className="text-gray-400 mb-6 text-[14px]">
                         No deployed wallets found. Create a wallet first.
                     </p>
                     <Link
                         to="/wallet"
-                        className="text-neon-cyan hover:underline font-orbitron text-sm"
+                        className="inline-flex py-3 px-6 bg-white text-black font-semibold rounded-xl text-[14px] hover:bg-gray-200 transition-colors"
                     >
-                        Create Wallet
+                        Initialize Wallet
                     </Link>
-                </Card>
+                </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                     {/* Transfer Form */}
-                    <Card variant="neon" title="Transfer Details">
-                        <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-2xl h-fit">
+                        <h2 className="text-lg font-semibold tracking-tight text-white mb-8 border-b border-[#1a1a1a] pb-5">Transfer Details</h2>
+                        
+                        <form onSubmit={handleSubmit} className="space-y-6">
                             {/* Wallet Selector */}
-                            <div>
-                                <label className="block text-xs font-orbitron text-gray-400 mb-2 uppercase">
+                            <div className="space-y-2">
+                                <label className="block text-[13px] font-medium text-gray-400 ml-1">
                                     From Wallet
                                 </label>
                                 <select
                                     name="user_id"
                                     value={form.user_id}
                                     onChange={handleChange}
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-neon-cyan/50 transition-all"
+                                    className="w-full bg-[#111] border border-[#222] focus:border-[#444] rounded-xl px-4 py-3.5 text-[14px] text-white outline-none transition-all appearance-none cursor-pointer"
                                 >
-                                    <option value="">Select wallet...</option>
+                                    <option value="" className="text-gray-500">Select wallet...</option>
                                     {wallets.map((w) => (
                                         <option key={w.user_id} value={w.user_id}>
-                                            {w.label || w.user_id} — {balanceText(balances[w.user_id]) || "loading..."}
+                                            {w.wallet_name || w.username || w.label || w.user_id} ({balanceText(balances[w.user_id])} STRK)
                                         </option>
                                     ))}
                                 </select>
                                 {selectedBalance && (
-                                    <div className="mt-2 text-xs text-gray-500">
-                                        Available: <span className="text-white font-mono">{balanceText(selectedBalance)}</span>
+                                    <div className="flex justify-between items-center px-1 pt-1 opacity-80">
+                                        <span className="text-[11px] text-gray-500 uppercase tracking-wider font-medium">Available</span>
+                                        <span className="text-[12px] text-white font-mono">{balanceText(selectedBalance)} STRK</span>
                                     </div>
                                 )}
                             </div>
 
                             {/* Recipient Address */}
-                            <div>
-                                <label className="block text-xs font-orbitron text-gray-400 mb-2 uppercase">
+                            <div className="space-y-2">
+                                <label className="block text-[13px] font-medium text-gray-400 ml-1">
                                     Recipient Address
                                 </label>
                                 <input
@@ -285,13 +279,13 @@ export default function SendTokens() {
                                     onChange={handleChange}
                                     placeholder="0x..."
                                     required
-                                    className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white placeholder-gray-600 font-mono text-sm focus:outline-none focus:border-neon-cyan/50 transition-all"
+                                    className="w-full bg-[#111] border border-[#222] focus:border-[#444] rounded-xl px-4 py-3.5 text-[14px] text-white placeholder-gray-600 font-mono outline-none transition-all"
                                 />
                             </div>
 
                             {/* Amount */}
-                            <div>
-                                <label className="block text-xs font-orbitron text-gray-400 mb-2 uppercase">
+                            <div className="space-y-2">
+                                <label className="block text-[13px] font-medium text-gray-400 ml-1">
                                     Amount (STRK)
                                 </label>
                                 <div className="relative">
@@ -300,201 +294,221 @@ export default function SendTokens() {
                                         name="amount_strk"
                                         value={form.amount_strk}
                                         onChange={handleChange}
-                                        placeholder="0.0"
+                                        placeholder="0.00"
                                         step="0.000001"
                                         min="0"
                                         required
-                                        className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 pr-16 text-white placeholder-gray-600 focus:outline-none focus:border-neon-cyan/50 transition-all"
+                                        className="w-full bg-[#111] border border-[#222] focus:border-[#444] rounded-xl px-4 py-3.5 pr-16 text-[14px] text-white placeholder-gray-600 font-mono outline-none transition-all"
                                     />
-                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm font-mono">
+                                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-[13px] font-medium bg-[#1a1a1a] px-2 py-1 rounded-md">
                                         STRK
                                     </span>
                                 </div>
                             </div>
 
                             {/* Pipeline Info */}
-                            <div className="p-3 bg-black/20 rounded-lg border border-white/5">
-                                <div className="text-xs text-gray-500 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan"></span>
-                                        Sign with ML-DSA-44 quantum signature
+                            <div className="p-4 bg-blue-900/5 border border-blue-500/10 rounded-xl mt-8">
+                                <div className="text-[12px] text-gray-400 space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                        </div>
+                                        <span>Sign with ML-DSA-44 quantum signature</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-neon-purple"></span>
-                                        Generate proof commitment (prover)
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-5 h-5 rounded-full bg-purple-500/10 flex items-center justify-center shrink-0">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                                        </div>
+                                        <span>Generate proof commitment (prover)</span>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-neon-green"></span>
-                                        Submit execute_with_proof to Starknet
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-5 h-5 rounded-full bg-green-500/10 flex items-center justify-center shrink-0">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                                        </div>
+                                        <span>Submit execute_with_proof to Starknet</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <Button
-                                type="submit"
-                                disabled={sending}
-                                variant="primary"
-                                className="w-full justify-center"
-                            >
-                                {sending ? (
-                                    <span className="flex items-center gap-2">
-                                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                        Signing & Submitting...
-                                    </span>
-                                ) : (
-                                    "Send STRK"
-                                )}
-                            </Button>
+                            <div className="pt-4">
+                                <button
+                                    type="submit"
+                                    disabled={sending}
+                                    className="w-full flex items-center justify-center py-4 rounded-[16px] bg-white text-black text-[15px] font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                                >
+                                    {sending ? (
+                                        <span className="flex items-center gap-2">
+                                            <svg className="animate-spin h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                            Signing & Submitting...
+                                        </span>
+                                    ) : (
+                                        "Authenticate & Send STRK"
+                                    )}
+                                </button>
+                            </div>
                         </form>
-                    </Card>
+                    </div>
 
                     {/* Result Panel */}
                     <div className="space-y-6">
                         {/* Success Result */}
                         {result && result.status !== "proof_failed" && result.status !== "submission_failed" && (
-                            <Card variant="default" className="border-l-4 border-l-neon-green">
-                                <h3 className="text-neon-green font-orbitron font-bold mb-4 flex items-center gap-2">
-                                    <span className="w-2 h-2 bg-neon-green rounded-full animate-pulse"></span>
-                                    TRANSFER SUBMITTED
-                                </h3>
+                            <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] overflow-hidden shadow-2xl relative">
+                                <div className="absolute top-0 left-0 w-full h-1 bg-green-500"></div>
+                                <div className="p-8">
+                                    <h3 className="text-green-400 font-semibold mb-6 flex items-center gap-3 text-[14px] tracking-wide uppercase">
+                                        <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+                                        Transfer Submitted
+                                    </h3>
 
-                                <div className="space-y-3 text-sm">
-                                    <div className="p-3 bg-black/20 rounded-lg">
-                                        <span className="text-gray-500 block text-xs mb-1">TX ID</span>
-                                        <span className="text-white font-mono text-xs">{result.tx_id}</span>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="p-3 bg-black/20 rounded-lg">
-                                            <span className="text-gray-500 block text-xs mb-1">AMOUNT</span>
-                                            <span className="text-white font-mono">{result.amount_strk} STRK</span>
+                                    <div className="space-y-4 text-sm">
+                                        <div className="p-4 bg-[#111] border border-[#222] rounded-xl flex justify-between items-center">
+                                            <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider">Amount</span>
+                                            <span className="text-white font-mono text-[16px] font-bold">{result.amount_strk} STRK</span>
                                         </div>
-                                        <div className="p-3 bg-black/20 rounded-lg">
-                                            <span className="text-gray-500 block text-xs mb-1">PROOF</span>
-                                            <span className="text-neon-green font-mono">
-                                                {result.proof_valid ? "VALID" : "INVALID"}
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                                <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">Status</span>
+                                                <span className="text-white font-mono text-[13px]">Submitted</span>
+                                            </div>
+                                            <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                                <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">ZK Proof</span>
+                                                <span className="text-green-400 font-mono text-[13px] font-medium">
+                                                    {result.proof_valid ? "VALID" : "INVALID"}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                            <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">TX ID</span>
+                                            <span className="text-white font-mono text-[13px] break-all">{result.tx_id}</span>
+                                        </div>
+
+                                        <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                            <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">Prover Backend</span>
+                                            <span className="text-blue-400 font-mono text-[13px]">
+                                                {result.prover_backend || "unknown"}
                                             </span>
                                         </div>
-                                    </div>
 
-                                    <div className="p-3 bg-black/20 rounded-lg">
-                                        <span className="text-gray-500 block text-xs mb-1">PROVER BACKEND</span>
-                                        <span className="text-neon-cyan font-mono text-xs">
-                                            {result.prover_backend || "unknown"}
-                                        </span>
-                                    </div>
+                                        {result.starknet_tx_hash && (
+                                            <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                                <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">Starknet TX</span>
+                                                <a
+                                                    href={result.explorer_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-white font-mono text-[13px] break-all hover:text-blue-400 transition-colors flex items-center justify-between"
+                                                >
+                                                    {result.starknet_tx_hash.slice(0, 14)}...{result.starknet_tx_hash.slice(-14)}
+                                                    <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                </a>
+                                            </div>
+                                        )}
 
-                                    {result.starknet_tx_hash && (
-                                        <div className="p-3 bg-black/20 rounded-lg">
-                                            <span className="text-gray-500 block text-xs mb-1">STARKNET TX</span>
-                                            <a
-                                                href={result.explorer_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-cyan-400 font-mono text-xs break-all hover:underline"
-                                            >
-                                                {result.starknet_tx_hash}
-                                            </a>
+                                        <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                                            <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">To</span>
+                                            <span className="text-gray-300 font-mono text-[13px] break-all">
+                                                {result.to_address}
+                                            </span>
                                         </div>
-                                    )}
 
-                                    <div className="p-3 bg-black/20 rounded-lg">
-                                        <span className="text-gray-500 block text-xs mb-1">TO</span>
-                                        <span className="text-gray-300 font-mono text-xs break-all">
-                                            {result.to_address}
-                                        </span>
-                                    </div>
-
-                                    {/* Live TX Status */}
-                                    {txStatus && (
-                                        <div className={`p-3 rounded-lg border ${txStatus.status === 'confirmed'
-                                            ? 'bg-green-900/20 border-green-500/20'
-                                            : txStatus.status === 'rejected' || txStatus.status === 'failed'
-                                                ? 'bg-red-900/20 border-red-500/20'
-                                                : 'bg-blue-900/20 border-blue-500/20'
-                                            }`}>
-                                            <span className="text-gray-500 block text-xs mb-1">ON-CHAIN STATUS</span>
-                                            <span className={`font-mono text-sm ${txStatus.status === 'confirmed' ? 'text-green-400' :
-                                                txStatus.status === 'rejected' || txStatus.status === 'failed' ? 'text-red-400' :
-                                                    'text-blue-400'
+                                        {/* Live TX Status */}
+                                        {txStatus && (
+                                            <div className={`p-4 rounded-xl border ${txStatus.status === 'confirmed'
+                                                ? 'bg-green-500/10 border-green-500/20'
+                                                : txStatus.status === 'rejected' || txStatus.status === 'failed'
+                                                    ? 'bg-red-500/10 border-red-500/20'
+                                                    : 'bg-blue-500/10 border-blue-500/20'
                                                 }`}>
-                                                {txStatus.status.toUpperCase()}
-                                            </span>
-                                        </div>
-                                    )}
+                                                <span className="text-gray-500 block text-[11px] font-medium uppercase tracking-wider mb-1">On-chain Status</span>
+                                                <span className={`font-mono text-[14px] font-semibold ${txStatus.status === 'confirmed' ? 'text-green-400' :
+                                                    txStatus.status === 'rejected' || txStatus.status === 'failed' ? 'text-red-400' :
+                                                        'text-blue-400'
+                                                    }`}>
+                                                    {txStatus.status.toUpperCase()}
+                                                </span>
+                                            </div>
+                                        )}
 
-                                    {polling && (
-                                        <div className="p-3 rounded-lg border bg-blue-900/20 border-blue-500/20">
-                                            <span className="text-blue-300 text-xs">Polling Starknet confirmation...</span>
-                                        </div>
-                                    )}
+                                        {polling && (
+                                            <div className="p-4 rounded-xl border bg-blue-500/5 border-blue-500/20 flex items-center justify-center gap-3">
+                                                <span className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></span>
+                                                <span className="text-blue-400 text-[13px] font-medium">Polling Starknet confirmation...</span>
+                                            </div>
+                                        )}
 
-                                    {pollTimedOut && result?.tx_id && (
-                                        <div className="p-3 rounded-lg border bg-yellow-900/20 border-yellow-500/20">
-                                            <span className="text-yellow-300 text-xs block mb-2">
-                                                Confirmation is taking longer than expected.
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => pollTxStatus(result.tx_id, { maxAttempts: 20, intervalMs: 3000 })}
-                                                className="text-xs px-3 py-1 rounded border border-yellow-400/40 text-yellow-200 hover:bg-yellow-400/10"
-                                            >
-                                                Retry Status Check
-                                            </button>
-                                        </div>
-                                    )}
+                                        {pollTimedOut && result?.tx_id && (
+                                            <div className="p-4 rounded-xl border bg-yellow-500/10 border-yellow-500/20 text-center">
+                                                <span className="text-yellow-500 text-[13px] block mb-3 font-medium">
+                                                    Confirmation is taking longer than expected.
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => pollTxStatus(result.tx_id, { maxAttempts: 20, intervalMs: 3000 })}
+                                                    className="text-[12px] px-4 py-2 font-medium bg-yellow-500/10 rounded-lg border border-yellow-500/20 text-yellow-500 hover:bg-yellow-500/20 transition-colors"
+                                                >
+                                                    Retry Status Check
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </Card>
+                            </div>
                         )}
 
                         {/* Error States */}
                         {result && (result.status === "proof_failed" || result.status === "submission_failed") && (
-                            <Card className="border-l-4 border-l-red-500 bg-red-500/5">
-                                <h3 className="text-red-400 font-orbitron font-bold mb-2">
-                                    {result.status === "proof_failed" ? "PROOF FAILED" : "SUBMISSION FAILED"}
+                            <div className="bg-red-500/5 border border-red-500/20 rounded-[24px] p-6 shadow-xl relative overflow-hidden">
+                                <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+                                <h3 className="text-red-400 font-semibold mb-2 flex items-center gap-2 text-[14px] uppercase tracking-wide">
+                                    <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                    {result.status === "proof_failed" ? "Proof Verification Failed" : "Submission Failed"}
                                 </h3>
-                                <p className="text-red-300 text-sm">{result.error}</p>
-                            </Card>
+                                <p className="text-red-300 text-[13px]">{result.error}</p>
+                            </div>
                         )}
 
                         {error && (
-                            <Card className="border-l-4 border-l-red-500 bg-red-500/5">
-                                <p className="text-red-400 flex items-center gap-2">
-                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="bg-red-500/5 border border-red-500/20 rounded-[16px] p-5 shadow-xl">
+                                <p className="text-red-400 text-[13px] font-medium flex items-start gap-3">
+                                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
                                     {error}
                                 </p>
-                            </Card>
+                            </div>
                         )}
 
                         {/* Transfer Info */}
                         {!result && !error && (
-                            <Card variant="default" title="How It Works">
-                                <div className="space-y-4 text-sm text-gray-400">
-                                    <div className="flex items-start gap-3">
-                                        <span className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xs shrink-0 mt-0.5">1</span>
+                            <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-xl">
+                                <h2 className="text-lg font-semibold tracking-tight text-white mb-6">How It Works</h2>
+                                <div className="space-y-6 text-[13px] text-gray-400">
+                                    <div className="flex items-start gap-4">
+                                        <span className="w-7 h-7 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-[12px] font-semibold shrink-0 border border-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.1)]">1</span>
                                         <div>
-                                            <p className="text-gray-300">Quantum Signature</p>
-                                            <p className="text-xs">Your transaction is signed with ML-DSA-44 (2,420 byte quantum-resistant signature)</p>
+                                            <p className="text-gray-200 font-medium mb-1">Quantum Signature</p>
+                                            <p className="text-gray-500 leading-relaxed">Your transaction is cryptographically signed locally using the ML-DSA-44 post-quantum algorithm, generating a massive 2,420-byte footprint.</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-3">
-                                        <span className="w-6 h-6 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs shrink-0 mt-0.5">2</span>
+                                    <div className="flex items-start gap-4">
+                                        <span className="w-7 h-7 rounded-full bg-purple-500/10 text-purple-400 flex items-center justify-center text-[12px] font-semibold shrink-0 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]">2</span>
                                         <div>
-                                            <p className="text-gray-300">Proof Generation</p>
-                                            <p className="text-xs">The prover verifies the signature and generates a 32-byte proof commitment</p>
+                                            <p className="text-gray-200 font-medium mb-1">Co-Processor Proof Generation</p>
+                                            <p className="text-gray-500 leading-relaxed">Our execution node verifies the robust signature and seamlessly rolls it up into a lightweight 32-byte cryptographic proof commitment.</p>
                                         </div>
                                     </div>
-                                    <div className="flex items-start gap-3">
-                                        <span className="w-6 h-6 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-xs shrink-0 mt-0.5">3</span>
+                                    <div className="flex items-start gap-4">
+                                        <span className="w-7 h-7 rounded-full bg-green-500/10 text-green-400 flex items-center justify-center text-[12px] font-semibold shrink-0 border border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]">3</span>
                                         <div>
-                                            <p className="text-gray-300">On-Chain Execution</p>
-                                            <p className="text-xs">execute_with_proof() is called on your QuantumGuard contract on Starknet Sepolia</p>
+                                            <p className="text-gray-200 font-medium mb-1">On-Chain Finality</p>
+                                            <p className="text-gray-500 leading-relaxed"><code className="text-gray-400 bg-[#111] px-1.5 py-0.5 rounded border border-[#222]">execute_with_proof()</code> is efficiently fired on your personalized QuantumGuard smart-contract deployed on Starknet.</p>
                                         </div>
                                     </div>
                                 </div>
-                            </Card>
+                            </div>
                         )}
                     </div>
                 </div>

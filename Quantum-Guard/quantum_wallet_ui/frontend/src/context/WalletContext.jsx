@@ -9,6 +9,7 @@ import {
     getWalletBalance,
     getActiveUserId,
     setActiveUserId,
+    getOrgDetails,
 } from '../api/client';
 
 const WalletContext = createContext(null);
@@ -20,6 +21,7 @@ export function WalletProvider({ children }) {
     const [transactions, setTransactions] = useState([]);
     const [txCount, setTxCount] = useState(0);
     const [balances, setBalances] = useState({}); // { user_id: walletData }
+    const [orgName, setOrgName] = useState("");
     const [loading, setLoading] = useState(true);
     const balanceIntervalRef = useRef(null);
     const isMountedRef = useRef(true);
@@ -127,6 +129,13 @@ export function WalletProvider({ children }) {
 
     const refreshAll = useCallback(async (options = {}) => {
         setLoading(true);
+        try {
+            const orgRes = await getOrgDetails(options);
+            if (isMountedRef.current) setOrgName(orgRes.data.org_name || "");
+        } catch {
+            // keep silent or handle
+        }
+        
         const [fetchedWallets] = await Promise.all([
             refreshWallets(options),
             refreshContract(options),
@@ -197,6 +206,7 @@ export function WalletProvider({ children }) {
         transactions,
         txCount,
         balances,
+        orgName,
         loading,
         refreshWallets,
         refreshContract,

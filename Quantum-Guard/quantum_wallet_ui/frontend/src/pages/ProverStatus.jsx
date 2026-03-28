@@ -1,15 +1,14 @@
 import { useState, useEffect } from "react";
 import { getHealth, getContractStatus } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
-import Card from "../components/Card";
 
 function CommandItem({ cmd, desc }) {
   return (
-    <div className="flex items-center gap-4 group hover:bg-white/5 p-2 rounded transition-colors">
-      <code className="text-neon-cyan font-mono text-sm bg-black/40 border border-neon-cyan/20 px-3 py-1.5 rounded min-w-[220px] group-hover:border-neon-cyan/50 transition-colors shadow-[0_0_5px_rgba(0,0,0,0.5)]">
+    <div className="flex items-center gap-4 group p-3 bg-[#111] border border-[#222] rounded-xl hover:border-[#333] transition-all">
+      <code className="text-white font-mono text-[12px] bg-[#1a1a1a] px-3 py-1.5 rounded-md min-w-[180px] border border-[#333]">
         {cmd}
       </code>
-      <span className="text-gray-400 text-sm group-hover:text-gray-200">
+      <span className="text-gray-400 text-[13px] font-medium group-hover:text-white transition-colors flex-1">
         {desc}
       </span>
     </div>
@@ -39,25 +38,26 @@ export default function ProverStatus() {
   }, []);
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold font-orbitron text-white">
-            System Diagnostics
-          </h1>
-          <p className="text-gray-400 mt-1">
-            Infrastructure health and prover status monitoring
-          </p>
-        </div>
+    <div className="space-y-8 animate-fade-in text-white font-sans max-w-7xl mx-auto w-full">
+      <div className="mb-8 pl-1">
+        <h1 className="text-2xl font-bold tracking-tight mb-2">
+          System Diagnostics
+        </h1>
+        <p className="text-gray-400 text-[14px]">
+          Infrastructure health and prover status monitoring
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Prover Status */}
-        <Card variant="purple" title="RUST PROVER (PHASE 2)" className="h-full">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-stretch">
+        {/* Left Column: Prover Status */}
+        <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-2xl h-full flex flex-col">
+          <h2 className="text-[14px] font-semibold text-white tracking-tight uppercase mb-6 border-b border-[#1a1a1a] pb-4">
+            Rust Prover (Phase 2)
+          </h2>
           {health ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg border border-white/5">
-                <span className="text-gray-400 text-sm uppercase tracking-wider">
+            <div className="space-y-8 flex-1 flex flex-col">
+              <div className="flex items-center justify-between p-5 bg-[#111] rounded-xl border border-[#222]">
+                <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider">
                   Operational Status
                 </span>
                 <StatusBadge
@@ -66,118 +66,104 @@ export default function ProverStatus() {
                 />
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                  <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
                     Binary Path
                   </span>
-                  <code className="text-gray-300 font-mono text-xs block bg-black/30 p-2 rounded border border-white/5">
+                  <code className="text-gray-300 font-mono text-[13px] block bg-[#111] p-3.5 rounded-xl border border-[#222] break-all">
                     {health.prover_binary}
                   </code>
                 </div>
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
-                      Execution Engine
+                <div>
+                    <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Execution Engine
                     </span>
-                    <span
-                      className={`text-sm font-bold ${health.prover_ready ? "text-neon-green" : "text-yellow-400"}`}
-                    >
-                      {health.prover_ready
-                        ? "Native Rust (Fast)"
-                        : "Python (Slow)"}
-                    </span>
-                  </div>
+                    <div className="p-4 bg-[#111] border border-[#222] rounded-xl flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full animate-pulse ${health.prover_ready ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)]'}`}></div>
+                        <span className={`text-[14px] font-semibold tracking-tight ${health.prover_ready ? "text-green-400" : "text-yellow-400"}`}>
+                            {health.prover_ready ? "Native Rust (Fast)" : "Python (Slow)"}
+                        </span>
+                    </div>
                 </div>
               </div>
 
               {!health.prover_ready && (
-                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
-                  <p className="text-yellow-400 text-sm mb-2 flex items-center gap-2">
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                      />
+                <div className="bg-yellow-500/5 border border-yellow-500/20 rounded-[16px] p-5 mt-auto">
+                  <p className="text-yellow-500 text-[13px] font-semibold mb-2 flex items-center gap-2 tracking-tight">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     Performance Warning
                   </p>
-                  <p className="text-gray-400 text-xs mb-2">
-                    Rust prover binary missing. Verification will be slow.
+                  <p className="text-yellow-500/70 text-[12px] mb-4 leading-relaxed font-medium">
+                    Rust prover binary missing. Verification will fall back to Python and run significantly slower.
                   </p>
-                  <code className="text-yellow-300 font-mono text-xs block bg-black/30 p-2 rounded">
+                  <code className="text-yellow-400 font-mono text-[12px] block bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
                     cd zk_prover && cargo build --release
                   </code>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center h-48 text-gray-500">
-              <svg
-                className="w-12 h-12 mb-3 opacity-50"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1}
-                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                />
+            <div className="flex flex-col items-center justify-center flex-1 h-full min-h-[250px] text-gray-500">
+              <svg className="w-10 h-10 mb-4 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
-              <p>API SERVER DISCONNECTED</p>
+              <p className="text-[12px] font-bold tracking-widest">API OFFLINE</p>
             </div>
           )}
-        </Card>
+        </div>
 
-        {/* API Server Status */}
-        <div className="space-y-8">
-          <Card variant="default" title="API INFRASTRUCTURE (PHASE 4)">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-4 border-b border-white/5">
-                <span className="text-gray-400 text-sm">Main Backend</span>
+        {/* Right Column: API & Smart Contract */}
+        <div className="flex flex-col gap-10 h-full">
+          {/* API Server Status */}
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-xl h-full">
+            <h2 className="text-[14px] font-semibold text-white tracking-tight uppercase mb-6 border-b border-[#1a1a1a] pb-4">
+              API Infrastructure (Phase 4)
+            </h2>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-5 bg-[#111] border border-[#222] rounded-xl">
+                <span className="text-gray-500 text-[12px] font-medium tracking-wider">Main Backend</span>
                 <StatusBadge
                   status={health ? "healthy" : "offline"}
                   label={health ? "ONLINE" : "OFFLINE"}
                 />
               </div>
               {health && (
-                <>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">Version Tag</span>
-                    <span className="text-white font-mono">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                    <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-1">
+                      Version Tag
+                    </span>
+                    <span className="text-white font-mono text-[14px] font-medium">
                       {health.version}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-gray-500 text-xs block mb-1">
+                  <div className="p-4 bg-[#111] border border-[#222] rounded-xl flex flex-col justify-center">
+                    <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
                       Starknet RPC Endpoint
                     </span>
                     <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                      <span className="text-gray-300 font-mono text-xs truncate">
+                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)] shrink-0"></div>
+                      <span className="text-gray-300 font-mono text-[12px] truncate w-full">
                         {health.starknet_rpc}
                       </span>
                     </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
-          </Card>
+          </div>
 
           {/* Starknet Contract Status */}
-          <Card variant="default" title="SMART CONTRACT (PHASE 3)">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between pb-4 border-b border-white/5">
-                <span className="text-gray-400 text-sm">Sepolia Testnet</span>
+          <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-xl h-full">
+            <h2 className="text-[14px] font-semibold text-white tracking-tight uppercase mb-6 border-b border-[#1a1a1a] pb-4">
+              Smart Contract (Phase 3)
+            </h2>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-5 bg-[#111] border border-[#222] rounded-xl">
+                <span className="text-gray-500 text-[12px] font-medium tracking-wider">Sepolia Testnet</span>
                 <StatusBadge
                   status={contract?.deployed ? "ready" : "pending"}
                   label={contract?.deployed ? "DEPLOYED" : "PENDING"}
@@ -185,46 +171,45 @@ export default function ProverStatus() {
               </div>
 
               {contract?.contract_address ? (
-                <div>
-                  <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
+                <div className="p-5 bg-[#111] border border-[#222] rounded-xl">
+                  <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
                     Contract Address
                   </span>
-                  <p className="text-indigo-300 font-mono text-xs break-all bg-indigo-900/10 p-2 rounded border border-indigo-500/20">
+                  <p className="text-blue-400 font-mono text-[14px] break-all">
                     {contract.contract_address}
                   </p>
                 </div>
               ) : (
-                <div className="p-4 bg-white/5 rounded-lg border border-white/10">
-                  <p className="text-gray-400 text-sm mb-4">
-                    Contract status is unavailable from health metadata.
+                <div className="p-6 bg-[#111] rounded-xl border border-[#222]">
+                  <p className="text-gray-300 text-[13px] mb-3 font-medium">
+                    Contract status is unavailable locally from `/health`.
                   </p>
-                  <p className="text-xs text-gray-500 mt-2">
-                    In v2, user wallets are deployed automatically during registration.
-                    Use the transfer smoke flow or user deployment-status endpoint to validate chain deployment.
+                  <p className="text-[12px] text-gray-500 leading-relaxed">
+                    In v2 architecture, user wallets are deployed autonomously during registration instead of using a root registry pool. Initiate a small transfer payload to validate active configuration state directly against the target block explorer.
                   </p>
                 </div>
               )}
             </div>
-          </Card>
+          </div>
         </div>
       </div>
 
       {/* Build Commands Reference */}
-      <Card
-        title="DEVELOPER COMMANDS"
-        className="opacity-80 hover:opacity-100 transition-opacity"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-          <CommandItem cmd="make setup" desc="Install dependencies" />
-          <CommandItem cmd="make test-v2" desc="Run v2 backend tests" />
-          <CommandItem cmd="make build-phase2" desc="Compile Rust prover" />
-          <CommandItem cmd="make build-phase3" desc="Compile Cairo contract" />
-          <CommandItem cmd="make deploy-contract" desc="Manual deployment" />
-          <CommandItem cmd="make test-all" desc="Full test suite" />
-          <CommandItem cmd="make run-v2-api" desc="Start v2 API server" />
-          <CommandItem cmd="make frontend-dev" desc="Start UI server" />
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 md:p-10 shadow-xl">
+        <h2 className="text-[14px] font-semibold text-white tracking-tight uppercase mb-6 border-b border-[#1a1a1a] pb-4">
+            Command Line Utilities
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <CommandItem cmd="make setup" desc="Install system dependencies" />
+          <CommandItem cmd="make test-v2" desc="Execute v2 integrity tests" />
+          <CommandItem cmd="make build-phase2" desc="Compile ZK Rust prover module" />
+          <CommandItem cmd="make build-phase3" desc="Compile Cairo contracts" />
+          <CommandItem cmd="make deploy-contract" desc="Manual chain deployment init" />
+          <CommandItem cmd="make test-all" desc="Execute global test suite wrapper" />
+          <CommandItem cmd="make run-v2-api" desc="Mount core Python backend host" />
+          <CommandItem cmd="make frontend-dev" desc="Mount rapid UI application host" />
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

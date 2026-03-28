@@ -125,6 +125,23 @@ async def create_organization(req: OrgCreateRequest):
         result = await _wallet_svc.create_organization(conn, req.org_name, str(req.admin_email))
     return result
 
+@router.get("/org")
+async def get_current_organization(authorization: str = Header(...)):
+    """Get the current organization details based on the API key."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Invalid Authorization header")
+    api_key = authorization[7:]
+    async with get_db() as conn:
+        org = await _wallet_svc.get_organization_by_api_key(conn, api_key)
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    
+    return {
+        "org_id": org["org_id"],
+        "org_name": org["org_name"],
+        "admin_email": org["admin_email"]
+    }
+
 
 # ── User Registration ─────────────────────────────────────
 
@@ -449,7 +466,7 @@ async def get_transaction(tx_id: str, authorization: str = Header(...)):
 
     amount_wei = tx.get("amount_wei", "0")
     strk = int(amount_wei) / (10 ** STRK_DECIMALS) if amount_wei else 0
-    explorer = f"https://sepolia.starkscan.co/tx/{tx['tx_hash']}" if tx.get("tx_hash") else None
+    explorer = f"https://sepolia.voyager.online/tx/{tx['tx_hash']}" if tx.get("tx_hash") else None
 
     return {
         **tx,
@@ -482,10 +499,11 @@ async def list_user_transactions(
             raise HTTPException(404, "Account not found")
         account_dict = dict(account)
 
+        account_addr = account_dict.get("account_address")
         txs = await _tx_svc.list_transactions(
-            conn, account_dict["account_id"], limit, offset
+            conn, account_dict["account_id"], limit, offset, account_addr
         )
-        total = await _tx_svc.count_transactions(conn, account_dict["account_id"])
+        total = await _tx_svc.count_transactions(conn, account_dict["account_id"], account_addr)
 
         for tx in txs:
             status = (tx.get("status") or "").lower()
@@ -549,10 +567,16 @@ async def list_user_transactions(
                 tx["starknet_status"] = (chain or {}).get("starknet_status") or "failed"
                 tx["error_message"] = str(err)
 
-    # Format amounts
+    # Format amounts and directions
     for tx in txs:
         wei = int(tx.get("amount_wei", "0"))
         tx["amount_strk"] = f"{wei / (10 ** STRK_DECIMALS):.6f}"
+        
+        is_receive = False
+        to_addr = tx.get("to_address", "")
+        if account_addr and to_addr and to_addr.lower() == account_addr.lower():
+            is_receive = True
+        tx["type"] = "receive" if is_receive else "send"
 
     return {"total": total, "limit": limit, "offset": offset, "transactions": txs}
 

@@ -265,7 +265,7 @@ class TransactionService:
             sender_account_address = starknet_result.get("sender_account_address", sender_account_address)
             submitted_by_address = starknet_result.get("submitted_by_address", submitted_by_address)
             if starknet_tx_hash:
-                explorer_url = f"https://sepolia.starkscan.co/tx/{starknet_tx_hash}"
+                explorer_url = f"https://sepolia.voyager.online/tx/{starknet_tx_hash}"
 
             await conn.execute(
                 """UPDATE transactions
@@ -768,25 +768,47 @@ class TransactionService:
         account_id: str,
         limit: int = 50,
         offset: int = 0,
+        account_address: Optional[str] = None,
     ) -> list[dict]:
-        rows = await conn.fetch(
-            """SELECT tx_id, account_id, to_address, amount_wei, status,
-                      proof_commitment, tx_hash, nonce, created_at, confirmed_at,
-                      sender_account_address, submitted_by_address, submission_mode,
-                      prover_backend, prover_fallback_reason
-               FROM transactions
-               WHERE account_id = $1
-               ORDER BY created_at DESC
-               LIMIT $2 OFFSET $3""",
-            account_id, limit, offset,
-        )
+        if account_address:
+            addr = account_address.lower()
+            rows = await conn.fetch(
+                """SELECT tx_id, account_id, to_address, amount_wei, status,
+                          proof_commitment, tx_hash, nonce, created_at, confirmed_at,
+                          sender_account_address, submitted_by_address, submission_mode,
+                          prover_backend, prover_fallback_reason
+                   FROM transactions
+                   WHERE account_id = $1 OR lower(to_address) = $2
+                   ORDER BY created_at DESC
+                   LIMIT $3 OFFSET $4""",
+                account_id, addr, limit, offset,
+            )
+        else:
+            rows = await conn.fetch(
+                """SELECT tx_id, account_id, to_address, amount_wei, status,
+                          proof_commitment, tx_hash, nonce, created_at, confirmed_at,
+                          sender_account_address, submitted_by_address, submission_mode,
+                          prover_backend, prover_fallback_reason
+                   FROM transactions
+                   WHERE account_id = $1
+                   ORDER BY created_at DESC
+                   LIMIT $2 OFFSET $3""",
+                account_id, limit, offset,
+            )
         return [dict(r) for r in rows]
 
-    async def count_transactions(self, conn, account_id: str) -> int:
-        result = await conn.fetchval(
-            "SELECT COUNT(*) FROM transactions WHERE account_id = $1",
-            account_id,
-        )
+    async def count_transactions(self, conn, account_id: str, account_address: Optional[str] = None) -> int:
+        if account_address:
+            addr = account_address.lower()
+            result = await conn.fetchval(
+                "SELECT COUNT(*) FROM transactions WHERE account_id = $1 OR lower(to_address) = $2",
+                account_id, addr,
+            )
+        else:
+            result = await conn.fetchval(
+                "SELECT COUNT(*) FROM transactions WHERE account_id = $1",
+                account_id,
+            )
         return result or 0
 
     async def get_transaction_status_from_starknet(

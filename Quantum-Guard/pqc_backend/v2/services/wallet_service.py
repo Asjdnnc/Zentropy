@@ -130,7 +130,7 @@ class WalletService:
         )
 
         # 2. Create wallet
-        wallet_result = await self._create_wallet(conn, user_id, org_id)
+        wallet_result = await self._create_wallet(conn, user_id, org_id, username or "Default Wallet")
 
         # 3. Audit
         await self.audit_svc.log(
@@ -149,7 +149,7 @@ class WalletService:
             **wallet_result,
         }
 
-    async def _create_wallet(self, conn, user_id: str, org_id: str) -> dict:
+    async def _create_wallet(self, conn, user_id: str, org_id: str, wallet_name: str = "Default Wallet") -> dict:
         """
         Internal: create wallet + account + encrypted keys for user.
         """
@@ -172,7 +172,7 @@ class WalletService:
                (wallet_id, user_id, wallet_name, seed_phrase_encrypted,
                 seed_phrase_hash, status, pq_algorithm, created_at, updated_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
-            wallet_id, user_id, "Default Wallet",
+            wallet_id, user_id, wallet_name,
             seed_encrypted, seed_hash,
             WalletStatus.ACTIVE.value, "ML-DSA-44", now, now,
         )

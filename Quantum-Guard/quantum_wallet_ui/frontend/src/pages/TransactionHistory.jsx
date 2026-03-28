@@ -7,8 +7,6 @@ import {
   listWallets,
 } from "../api/client";
 import StatusBadge from "../components/StatusBadge";
-import Card from "../components/Card";
-import Button from "../components/Button";
 
 const STATUS_MAP = {
   signed: "pending",
@@ -87,8 +85,6 @@ export default function TransactionHistory() {
         return;
       }
       const params = { limit, offset: page * limit };
-      // Backend endpoint only supports: user_id, limit, offset
-      // Note: label and status filtering needs to be done on the frontend
       const res = await getTransactionHistory({ ...params, user_id: selectedUserId });
       setTransactions(res.data.transactions || []);
       setTotal(res.data.total || 0);
@@ -112,7 +108,6 @@ export default function TransactionHistory() {
       const res = await getTransactionStatus(txId);
       setStatusDetail(res.data);
       setSelectedTx(txId);
-      // Refresh to pick up any state changes
       fetchHistory();
     } catch (err) {
       setStatusDetail({
@@ -121,32 +116,29 @@ export default function TransactionHistory() {
     }
   }
 
-  const inputClass =
-    "bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-neon-cyan/50 focus:shadow-[0_0_10px_rgba(0,243,255,0.1)] transition-all";
+  const inputClass = "bg-[#111] border border-[#222] rounded-xl px-4 py-3 text-[13px] text-white placeholder-gray-600 focus:border-[#444] outline-none transition-all";
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+    <div className="space-y-8 animate-fade-in text-white font-sans max-w-7xl mx-auto w-full">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8 pl-1">
         <div>
-          <h1 className="text-3xl font-bold font-orbitron text-white">
-            Ledger History
-          </h1>
-          <p className="text-gray-400 mt-1">
+          <h1 className="text-2xl font-bold tracking-tight mb-2">Ledger History</h1>
+          <p className="text-gray-400 text-[14px]">
             Immutable record of quantum-secured operations
           </p>
         </div>
         <div className="text-right">
-          <span className="text-neon-cyan font-mono text-2xl font-bold">
+          <span className="text-white font-mono text-3xl font-bold tracking-tight block mb-1">
             {total}
           </span>
-          <span className="text-gray-500 text-xs uppercase tracking-wider block">
+          <span className="text-gray-500 text-[11px] uppercase font-medium tracking-wider block">
             Total Transactions
           </span>
         </div>
       </div>
 
       {/* Filters */}
-      <Card className="flex flex-wrap gap-3 items-center p-4">
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[20px] p-5 flex flex-wrap gap-4 items-center shadow-xl">
         <div className="min-w-[220px]">
           <select
             value={selectedUserId}
@@ -156,12 +148,12 @@ export default function TransactionHistory() {
               setActiveUserId(value);
               setPage(0);
             }}
-            className={`${inputClass} appearance-none cursor-pointer`}
+            className={`${inputClass} appearance-none cursor-pointer w-full`}
           >
-            <option value="">Select Wallet</option>
+            <option value="" className="text-gray-500">Select Wallet...</option>
             {wallets.map((w) => (
               <option key={w.user_id} value={w.user_id}>
-                {w.username || w.email || w.user_id}
+                {w.wallet_name || w.username || w.label || w.user_id}
               </option>
             ))}
           </select>
@@ -169,7 +161,7 @@ export default function TransactionHistory() {
         <div className="flex-1 min-w-[200px]">
           <input
             type="text"
-            placeholder="Filter by wallet label..."
+            placeholder="Search by ID or address..."
             value={filter.label}
             onChange={(e) => {
               setFilter({ ...filter, label: e.target.value });
@@ -178,72 +170,79 @@ export default function TransactionHistory() {
             className={`w-full ${inputClass}`}
           />
         </div>
-        <select
-          value={filter.status}
-          onChange={(e) => {
-            setFilter({ ...filter, status: e.target.value });
-            setPage(0);
-          }}
-          className={`${inputClass} appearance-none cursor-pointer`}
+        <div className="min-w-[160px]">
+            <select
+              value={filter.status}
+              onChange={(e) => {
+                setFilter({ ...filter, status: e.target.value });
+                setPage(0);
+              }}
+              className={`${inputClass} appearance-none cursor-pointer w-full`}
+            >
+              <option value="">All Statuses</option>
+              <option value="signed">Signed</option>
+              <option value="proved">Proved</option>
+              <option value="submitted">Submitted</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="error">Error</option>
+              <option value="proof_failed">Proof Failed</option>
+            </select>
+        </div>
+        <button 
+          onClick={fetchHistory} 
+          className="px-5 py-3 bg-white text-black font-semibold rounded-xl text-[13px] hover:bg-gray-200 transition-colors"
         >
-          <option value="">All Statuses</option>
-          <option value="signed">Signed</option>
-          <option value="proved">Proved</option>
-          <option value="submitted">Submitted</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="error">Error</option>
-          <option value="proof_failed">Proof Failed</option>
-        </select>
-        <Button onClick={fetchHistory} variant="secondary" className="h-[38px]">
           Refresh
-        </Button>
-      </Card>
+        </button>
+      </div>
 
       {/* Transactions Table */}
-      <Card className="overflow-hidden p-0" variant="default">
+      <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] overflow-hidden shadow-2xl">
         {loading ? (
-          <div className="p-12 text-center">
-            <div className="w-12 h-12 border-4 border-neon-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <div className="text-neon-cyan font-orbitron animate-pulse">
-              SYNCING LEDGER...
-            </div>
+          <div className="p-16 text-center flex flex-col items-center justify-center space-y-4">
+            <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <span className="text-gray-400 text-[13px] font-medium tracking-wide uppercase">Syncing Ledger...</span>
           </div>
         ) : filteredTransactions.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 italic">
+          <div className="p-16 text-center text-gray-500 text-[14px]">
             No transactions found matching criteria.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-gray-400 uppercase bg-black/40 font-orbitron tracking-wider">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-[#111] border-b border-[#1a1a1a]">
                 <tr>
-                  <th className="px-6 py-4">TX ID</th>
-                  <th className="px-6 py-4">Wallet</th>
-                  <th className="px-6 py-4">Target</th>
-                  <th className="px-6 py-4">Amount</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Starknet Hash</th>
-                  <th className="px-6 py-4">Timestamp</th>
-                  <th className="px-6 py-4">Actions</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">TX ID</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Wallet</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Target</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Amount</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Status</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Starknet Hash</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Timestamp</th>
+                  <th className="px-6 py-4 text-[11px] font-medium uppercase tracking-wider text-gray-500">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-[#1a1a1a]">
                 {filteredTransactions.map((tx) => (
                   <tr
                     key={tx.tx_id}
-                    className="hover:bg-white/5 transition-colors group"
+                    className="hover:bg-[#111]/50 transition-colors group"
                   >
-                    <td className="px-6 py-4 font-mono text-xs text-neon-purple/80 group-hover:text-neon-purple transition-colors">
+                    <td className="px-6 py-4 font-mono text-[13px] text-white group-hover:text-blue-400 transition-colors">
                       {tx.tx_id.slice(0, 8)}...
                     </td>
-                    <td className="px-6 py-4 text-gray-300">
+                    <td className="px-6 py-4 text-[13px] text-gray-300">
                       {tx.account_id ? tx.account_id.slice(0, 8) + "..." : "-"}
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs text-gray-400">
-                      {tx.to_address ? tx.to_address.slice(0, 10) + "..." : "-"}
+                    <td className="px-6 py-4 font-mono text-[13px] text-gray-400">
+                      {tx.type === "receive" 
+                        ? (tx.sender_account_address ? "From: " + tx.sender_account_address.slice(0, 8) + "..." : "From: -")
+                        : (tx.to_address ? "To: " + tx.to_address.slice(0, 8) + "..." : "To: -")}
                     </td>
-                    <td className="px-6 py-4 text-white font-medium">
-                      {tx.amount_strk || "0.000000"}
+                    <td className="px-6 py-4 font-mono text-[13px] font-medium">
+                      <span className={tx.type === "receive" ? "text-green-400 bg-green-500/10 px-2 py-1 rounded" : "text-white bg-[#111] px-2 py-1 rounded border border-[#222]"}>
+                        {tx.type === "receive" ? "+" : "-"}{tx.amount_strk || "0.000000"}
+                      </span>
                     </td>
                     <td className="px-6 py-4">
                       <StatusBadge
@@ -254,22 +253,22 @@ export default function TransactionHistory() {
                     <td className="px-6 py-4">
                       {tx.tx_hash ? (
                         <span
-                          className="font-mono text-xs text-blue-400 hover:text-blue-300 cursor-help"
+                          className="font-mono text-[13px] text-blue-400 hover:text-white transition-colors cursor-help bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20"
                           title={tx.tx_hash}
                         >
-                          {tx.tx_hash.slice(0, 10)}...
+                          {tx.tx_hash.slice(0, 8)}...
                         </span>
                       ) : (
-                        <span className="text-gray-600 text-xs">—</span>
+                        <span className="text-gray-600 font-mono text-[13px]">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-gray-400 text-xs">
+                    <td className="px-6 py-4 text-gray-500 text-[12px]">
                       {formatTime(tx.created_at)}
                     </td>
                     <td className="px-6 py-4">
                       <button
                         onClick={() => handleCheckStatus(tx.tx_id)}
-                        className="text-xs text-neon-cyan border border-neon-cyan/30 px-2 py-1 rounded hover:bg-neon-cyan/10 hover:shadow-[0_0_10px_rgba(0,243,255,0.2)] transition-all uppercase font-bold tracking-wide"
+                        className="text-[11px] font-semibold text-gray-300 bg-[#111] border border-[#222] px-3 py-1.5 rounded-md hover:bg-white hover:text-black transition-colors uppercase tracking-wide"
                       >
                         Details
                       </button>
@@ -280,42 +279,39 @@ export default function TransactionHistory() {
             </table>
           </div>
         )}
-      </Card>
+      </div>
 
       {/* Pagination */}
       {total > limit && (
-        <div className="flex justify-center gap-4">
-          <Button
+        <div className="flex justify-center items-center gap-6 mt-8">
+          <button
             disabled={page === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-            variant="secondary"
+            className="px-4 py-2 bg-[#111] border border-[#222] text-white rounded-xl text-[13px] font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Previous
-          </Button>
-          <span className="text-gray-400 text-sm self-center font-orbitron">
-            PAGE {page + 1} OF {Math.ceil(total / limit)} {filteredTotal !== total ? `(filtered ${filteredTotal})` : ""}
+          </button>
+          <span className="text-gray-500 text-[12px] font-medium uppercase tracking-wider">
+            Page {page + 1} of {Math.ceil(total / limit)} {filteredTotal !== total ? `(Filtered ${filteredTotal})` : ""}
           </span>
-          <Button
+          <button
             disabled={(page + 1) * limit >= total}
             onClick={() => setPage((p) => p + 1)}
-            variant="secondary"
+            className="px-4 py-2 bg-[#111] border border-[#222] text-white rounded-xl text-[13px] font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Next
-          </Button>
+          </button>
         </div>
       )}
 
       {/* Status Detail Modal */}
       {selectedTx && statusDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <Card
-            variant="neon"
-            className="w-full max-w-2xl max-h-[90vh] overflow-y-auto relative shadow-2xl"
-          >
-            <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
-              <h3 className="text-lg font-orbitron font-bold text-white flex items-center gap-2">
-                <span className="text-neon-cyan">TX DETAIL</span>
-                <span className="text-gray-500 text-sm font-mono">
+          <div className="w-full max-w-2xl bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-[#1a1a1a] bg-[#050505]">
+              <h3 className="text-lg font-bold text-white flex items-center gap-3 tracking-tight">
+                TX Detail
+                <span className="text-gray-500 text-[13px] font-mono font-normal">
                   {selectedTx}
                 </span>
               </h3>
@@ -324,152 +320,150 @@ export default function TransactionHistory() {
                   setSelectedTx(null);
                   setStatusDetail(null);
                 }}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-gray-500 hover:text-white transition-colors p-1"
               >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
 
-            {statusDetail.error ? (
-              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-5 mb-4">
-                <p className="text-red-400 text-sm font-mono">
-                  {statusDetail.error}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
-                      Status
-                    </span>
-                    <StatusBadge
-                      status={STATUS_MAP[statusDetail.status] || "offline"}
-                      label={statusDetail.status}
-                    />
-                  </div>
-                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
-                      ZK Proof
-                    </span>
-                    <span
-                      className={`font-bold ${statusDetail.proof_valid ? "text-neon-green" : "text-red-400"}`}
-                    >
-                      {statusDetail.proof_valid
-                        ? "VERIFIED VALID"
-                        : "NOT VERIFIED"}
-                    </span>
-                  </div>
-                </div>
-
-                {statusDetail.proof_commitment && (
-                  <div className="p-4 bg-black/30 rounded-lg border border-white/5">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                      Proof Commitment
-                    </span>
-                    <p className="text-neon-purple font-mono text-xs break-all leading-relaxed">
-                      {statusDetail.proof_commitment}
+            <div className="p-6 overflow-y-auto space-y-6">
+                {statusDetail.error ? (
+                <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-5">
+                    <p className="text-red-400 text-[13px] font-mono">
+                    {statusDetail.error}
                     </p>
-                  </div>
+                </div>
+                ) : (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Status
+                        </span>
+                        <StatusBadge
+                        status={STATUS_MAP[statusDetail.status] || "offline"}
+                        label={statusDetail.status}
+                        />
+                    </div>
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        ZK Proof
+                        </span>
+                        <span
+                        className={`font-semibold text-[13px] ${statusDetail.proof_valid ? "text-green-400" : "text-red-400"}`}
+                        >
+                        {statusDetail.proof_valid
+                            ? "Verified Valid"
+                            : "Not Verified"}
+                        </span>
+                    </div>
+                    </div>
+
+                    {statusDetail.proof_commitment && (
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Proof Commitment
+                        </span>
+                        <p className="text-white font-mono text-[13px] break-all">
+                        {statusDetail.proof_commitment}
+                        </p>
+                    </div>
+                    )}
+
+                    {statusDetail.tx_hash && (
+                    <div className="p-4 bg-blue-500/5 rounded-xl border border-blue-500/20">
+                        <span className="text-blue-400/70 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Starknet TX Hash
+                        </span>
+                        <p className="text-blue-400 font-mono text-[13px] break-all">
+                        {statusDetail.tx_hash}
+                        </p>
+                    </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-1">
+                        Chain Status
+                        </span>
+                        <span className="text-white font-mono text-[13px]">
+                        {statusDetail.starknet_status || "—"}
+                        </span>
+                    </div>
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-1">
+                        Last Updated
+                        </span>
+                        <span className="text-gray-300 text-[13px]">
+                        {formatTime(statusDetail.confirmed_at || statusDetail.created_at)}
+                        </span>
+                    </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Sender Account
+                        </span>
+                        <p className="text-gray-300 font-mono text-[13px] break-all">
+                        {statusDetail.sender_account_address || "—"}
+                        </p>
+                    </div>
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        {statusDetail.submission_mode === "relayer" ? "Relayer" : "Submitted By"}
+                        </span>
+                        <p className="text-gray-300 font-mono text-[13px] break-all">
+                        {statusDetail.submitted_by_address || "—"}
+                        </p>
+                        <p className="text-gray-500 text-[11px] mt-2 font-medium tracking-wider uppercase">
+                        MODE: {statusDetail.submission_mode || "relayer"}
+                        </p>
+                    </div>
+                    </div>
+
+                    <div className="p-4 bg-[#111] rounded-xl border border-[#222]">
+                    <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Prover Backend
+                    </span>
+                    <p className="text-white font-mono text-[13px] break-all">
+                        {statusDetail.prover_backend || "unknown"}
+                    </p>
+                    {statusDetail.prover_fallback_reason && (
+                        <p className="text-yellow-500 font-mono text-[12px] mt-2 bg-yellow-500/10 px-3 py-1.5 rounded-md border border-yellow-500/20">
+                        Fallback: {statusDetail.prover_fallback_reason}
+                        </p>
+                    )}
+                    </div>
+
+                    {statusDetail.starknet_receipt && (
+                    <div>
+                        <span className="text-gray-500 text-[11px] font-medium uppercase tracking-wider block mb-2">
+                        Receipt Data
+                        </span>
+                        <pre className="text-gray-400 text-[12px] font-mono bg-[#111] rounded-xl p-4 overflow-auto max-h-40 border border-[#222] scrollbar-thin scrollbar-thumb-[#333]">
+                        {statusDetail.starknet_receipt}
+                        </pre>
+                    </div>
+                    )}
+                </div>
                 )}
-
-                {statusDetail.tx_hash && (
-                  <div className="p-4 bg-indigo-900/10 rounded-lg border border-indigo-500/20">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                      Starknet TX Hash
-                    </span>
-                    <p className="text-indigo-300 font-mono text-xs break-all">
-                      {statusDetail.tx_hash}
-                    </p>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/5 rounded-lg">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
-                      Chain Status
-                    </span>
-                    <span className="text-white font-mono text-sm">
-                      {statusDetail.starknet_status || "—"}
-                    </span>
-                  </div>
-                  <div className="p-4 bg-white/5 rounded-lg">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-1">
-                      Last Updated
-                    </span>
-                    <span className="text-white text-sm">
-                      {formatTime(statusDetail.confirmed_at || statusDetail.created_at)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                      Sender Account
-                    </span>
-                    <p className="text-gray-300 font-mono text-xs break-all">
-                      {statusDetail.sender_account_address || "—"}
-                    </p>
-                  </div>
-                  <div className="p-4 bg-white/5 rounded-lg border border-white/5">
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                      {statusDetail.submission_mode === "relayer" ? "Relayer" : "Submitted By"}
-                    </span>
-                    <p className="text-gray-300 font-mono text-xs break-all">
-                      {statusDetail.submitted_by_address || "—"}
-                    </p>
-                    <p className="text-gray-500 text-[11px] mt-2 uppercase tracking-wider">
-                      Mode: {statusDetail.submission_mode || "relayer"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-white/5 rounded-lg border border-white/5">
-                  <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                    Prover Backend
-                  </span>
-                  <p className="text-neon-cyan font-mono text-xs break-all">
-                    {statusDetail.prover_backend || "unknown"}
-                  </p>
-                  {statusDetail.prover_fallback_reason && (
-                    <p className="text-yellow-300 font-mono text-[11px] mt-2 break-all">
-                      fallback: {statusDetail.prover_fallback_reason}
-                    </p>
-                  )}
-                </div>
-
-                {statusDetail.starknet_receipt && (
-                  <div>
-                    <span className="text-gray-500 text-xs uppercase tracking-wider block mb-2">
-                      Receipt Data
-                    </span>
-                    <pre className="text-gray-400 text-xs font-mono bg-black/50 p-4 rounded-lg overflow-auto max-h-40 border border-white/5">
-                      {statusDetail.starknet_receipt}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <Button onClick={() => setSelectedTx(null)} variant="secondary">
-                Close Details
-              </Button>
             </div>
-          </Card>
+
+            <div className="p-6 border-t border-[#1a1a1a] bg-[#050505] flex justify-end">
+              <button
+                onClick={() => {
+                    setSelectedTx(null);
+                    setStatusDetail(null);
+                }}
+                className="px-6 py-2.5 bg-white text-black font-semibold rounded-xl text-[13px] hover:bg-gray-200 transition-colors"
+                >
+                Close Details
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

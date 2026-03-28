@@ -43,7 +43,9 @@ class DeploymentService:
         configured = os.environ.get("AUTO_DEPLOY_WALLET_ON_REGISTER")
         if configured is not None:
             return configured.strip().lower() in {"1", "true", "yes", "on"}
-        return os.environ.get("ENV", "development").strip().lower() == "production"
+        # Default to True instead of relying on ENV=production matching exactly.
+        # This fixes deployment timeouts on platforms that don't set ENV=production.
+        return True
 
     async def enqueue_deployment(self, account_id: str, org_id: str, user_id: str) -> None:
         """Fire-and-forget deployment task."""

@@ -41,6 +41,7 @@ from ..models.schemas import (
     TransactionDetailOut, TransferResultOut,
     MerkleBatchOut, MerkleBatchDetailOut, MerkleProofOut,
     AuditLogOut, HealthOut, OrganizationCreate, OrganizationOut, SenderProfileUpdate,
+    SetMpinRequest, VerifyMpinRequest,
 )
 from ..models.enums import STRK_DECIMALS
 from ..services.key_service import KeyService
@@ -254,6 +255,57 @@ async def update_user_sender_profile(
     return result
 
 
+@router.post("/users/{user_id}/mpin")
+async def set_mpin(
+    user_id: str,
+    req: SetMpinRequest,
+    authorization: str = Header(...),
+):
+    """Set or update the MPIN for a user's wallet."""
+    org_id = await _get_org_id(authorization)
+
+    async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User not found")
+            
+        wallet = await _wallet_svc.get_wallet_by_user(conn, user_id)
+        if not wallet:
+            raise HTTPException(404, "Wallet not found")
+
+        wallet_id = dict(wallet)["wallet_id"]
+        await _wallet_svc.set_mpin(conn, wallet_id, req.mpin)
+
+    return {"status": "success", "message": "MPIN configured securely."}
+
+
+@router.post("/users/{user_id}/mpin/verify")
+async def verify_mpin(
+    user_id: str,
+    req: VerifyMpinRequest,
+    authorization: str = Header(...),
+):
+    """Verify the MPIN for a user's wallet without executing a transaction."""
+    org_id = await _get_org_id(authorization)
+
+    async with get_db() as conn:
+        user = await _wallet_svc.get_user(conn, user_id)
+        if not user or dict(user).get("org_id") != org_id:
+            raise HTTPException(404, "User not found")
+            
+        wallet = await _wallet_svc.get_wallet_by_user(conn, user_id)
+        if not wallet:
+            raise HTTPException(404, "Wallet not found")
+
+        wallet_id = dict(wallet)["wallet_id"]
+        is_valid = await _wallet_svc.verify_mpin(conn, wallet_id, req.mpin)
+
+    if not is_valid:
+        raise HTTPException(401, "Invalid MPIN")
+
+    return {"status": "success", "valid": True}
+
+
 @router.post("/users/{user_id}/deployment/retry")
 async def retry_user_deployment(
     user_id: str = Path(..., min_length=1),
@@ -339,6 +391,7 @@ async def get_user_wallet(user_id: str, authorization: str = Header(...)):
         "balance_strk": f"{balance_strk:.6f}",
         "balance_wei": balance_wei,
         "status": data["wallet"]["status"],
+        "has_mpin": data["wallet"].get("has_mpin", False),
     }
 
 
@@ -361,6 +414,7 @@ class TransferBody(BaseModel):
     user_id: str
     to_address: str = Field(..., min_length=3)
     amount_strk: float = Field(..., gt=0)
+    mpin: str = Field(..., min_length=4, max_length=6, pattern="^[0-9]+$")
 
 
 @router.post("/transactions/transfer")
@@ -379,6 +433,7 @@ async def transfer(
         result = await _tx_svc.execute_transfer(
             conn, req.user_id, org_id,
             req.to_address, req.amount_strk,
+            req.mpin,
             ip_address=ip,
         )
 
@@ -574,8 +629,13 @@ async def list_user_transactions(
         
         is_receive = False
         to_addr = tx.get("to_address", "")
-        if account_addr and to_addr and to_addr.lower() == account_addr.lower():
-            is_receive = True
+        if account_addr and to_addr:
+            norm_to = _tx_svc._normalize_starknet_address(to_addr).lower()
+            norm_acc = _tx_svc._normalize_starknet_address(account_addr).lower()
+            if norm_to and norm_acc and norm_to == norm_acc:
+                is_receive = True
+            elif to_addr.lower() == account_addr.lower():
+                is_receive = True
         tx["type"] = "receive" if is_receive else "send"
 
     return {"total": total, "limit": limit, "offset": offset, "transactions": txs}

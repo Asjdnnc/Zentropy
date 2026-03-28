@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS wallets (
     seed_phrase_hash        TEXT NOT NULL,
     status                  TEXT NOT NULL DEFAULT 'active',
     pq_algorithm            TEXT NOT NULL DEFAULT 'ML-DSA-44',
+    mpin_hash               TEXT,
     created_at              REAL NOT NULL,
     updated_at              REAL NOT NULL,
     last_activity           REAL
@@ -214,6 +215,7 @@ ALTER TABLE transactions ADD COLUMN submitted_by_address TEXT;
 ALTER TABLE transactions ADD COLUMN submission_mode TEXT NOT NULL DEFAULT 'relayer';
 ALTER TABLE transactions ADD COLUMN prover_backend TEXT;
 ALTER TABLE transactions ADD COLUMN prover_fallback_reason TEXT;
+ALTER TABLE wallets ADD COLUMN mpin_hash TEXT;
 """
 
 

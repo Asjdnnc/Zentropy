@@ -67,6 +67,7 @@ class TransactionService:
         org_id: str,
         to_address: str,
         amount_strk: float,
+        mpin: str,
         call_prover_fn: Optional[Callable] = None,
         ip_address: Optional[str] = None,
     ) -> dict:
@@ -83,6 +84,26 @@ class TransactionService:
         wallet_id = wallet["wallet_id"]
         account_id = account["account_id"]
         contract_address = account["account_address"]
+
+        # Validate MPIN
+        mpin_hash = wallet.get("mpin_hash")
+        if not mpin_hash:
+            return {
+                "tx_id": tx_id,
+                "status": "unauthorized",
+                "proof_valid": False,
+                "error": "MPIN is not configured for this wallet. Please set an MPIN first.",
+            }
+        
+        salt = wallet_id.encode('utf-8')
+        expected_hash = hashlib.pbkdf2_hmac('sha256', mpin.encode('utf-8'), salt, 100000).hex()
+        if expected_hash != mpin_hash:
+            return {
+                "tx_id": tx_id,
+                "status": "unauthorized",
+                "proof_valid": False,
+                "error": "Invalid MPIN provided.",
+            }
 
         deployment_status = (account.get("deployment_status") or "").strip().lower()
         if deployment_status != "deployed":
@@ -771,17 +792,23 @@ class TransactionService:
         account_address: Optional[str] = None,
     ) -> list[dict]:
         if account_address:
+            import re
             addr = account_address.lower()
+            full_addr = self._normalize_starknet_address(addr).lower()
+            stripped_addr = re.sub(r'^0x0+', '0x', addr)
+            if stripped_addr == '0x':
+                stripped_addr = '0x0'
+
             rows = await conn.fetch(
                 """SELECT tx_id, account_id, to_address, amount_wei, status,
                           proof_commitment, tx_hash, nonce, created_at, confirmed_at,
                           sender_account_address, submitted_by_address, submission_mode,
                           prover_backend, prover_fallback_reason
                    FROM transactions
-                   WHERE account_id = $1 OR lower(to_address) = $2
+                   WHERE account_id = $1 OR lower(to_address) = $2 OR lower(to_address) = $3 OR lower(to_address) = $4
                    ORDER BY created_at DESC
-                   LIMIT $3 OFFSET $4""",
-                account_id, addr, limit, offset,
+                   LIMIT $5 OFFSET $6""",
+                account_id, addr, full_addr, stripped_addr, limit, offset,
             )
         else:
             rows = await conn.fetch(
@@ -799,10 +826,16 @@ class TransactionService:
 
     async def count_transactions(self, conn, account_id: str, account_address: Optional[str] = None) -> int:
         if account_address:
+            import re
             addr = account_address.lower()
+            full_addr = self._normalize_starknet_address(addr).lower()
+            stripped_addr = re.sub(r'^0x0+', '0x', addr)
+            if stripped_addr == '0x':
+                stripped_addr = '0x0'
+
             result = await conn.fetchval(
-                "SELECT COUNT(*) FROM transactions WHERE account_id = $1 OR lower(to_address) = $2",
-                account_id, addr,
+                "SELECT COUNT(*) FROM transactions WHERE account_id = $1 OR lower(to_address) = $2 OR lower(to_address) = $3 OR lower(to_address) = $4",
+                account_id, addr, full_addr, stripped_addr,
             )
         else:
             result = await conn.fetchval(

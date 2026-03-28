@@ -69,12 +69,21 @@ class SenderProfileUpdate(BaseModel):
     submitter_private_key: Optional[str] = Field(None, min_length=3, max_length=255)
 
 
+class SetMpinRequest(BaseModel):
+    mpin: str = Field(..., min_length=4, max_length=6, pattern="^[0-9]+$")
+
+
+class VerifyMpinRequest(BaseModel):
+    mpin: str = Field(..., min_length=4, max_length=6, pattern="^[0-9]+$")
+
+
 class WalletOut(BaseModel):
     wallet_id: str
     user_id: str
     wallet_name: str
     status: WalletStatus = WalletStatus.ACTIVE
     pq_algorithm: str = PQ_ALGORITHM
+    has_mpin: bool = False
     created_at: datetime
     last_activity: Optional[datetime] = None
 
@@ -121,6 +130,7 @@ class AccountOut(BaseModel):
 class TransferRequest(BaseModel):
     to_address: str = Field(..., min_length=3, max_length=255)
     amount_strk: float = Field(..., gt=0)
+    mpin: str = Field(..., min_length=4, max_length=6, pattern="^[0-9]+$")
 
 
 class TransactionOut(BaseModel):

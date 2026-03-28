@@ -256,6 +256,31 @@ class WalletService:
             "SELECT * FROM accounts WHERE account_address = $1", address
         )
 
+    async def set_mpin(self, conn, wallet_id: str, mpin: str) -> bool:
+        """Securely hash and store the MPIN for a wallet."""
+        salt = wallet_id.encode('utf-8')
+        mpin_hash = hashlib.pbkdf2_hmac('sha256', mpin.encode('utf-8'), salt, 100000).hex()
+        
+        now = time.time()
+        await conn.execute(
+            """UPDATE wallets
+               SET mpin_hash = $1, updated_at = $2
+               WHERE wallet_id = $3""",
+            mpin_hash, now, wallet_id
+        )
+        return True
+
+    async def verify_mpin(self, conn, wallet_id: str, mpin: str) -> bool:
+        """Verify the given MPIN against the stored hash for the wallet."""
+        wallet = await conn.fetchrow("SELECT mpin_hash FROM wallets WHERE wallet_id = $1", wallet_id)
+        if not wallet or not wallet["mpin_hash"]:
+            return False
+
+        salt = wallet_id.encode('utf-8')
+        mpin_hash = hashlib.pbkdf2_hmac('sha256', mpin.encode('utf-8'), salt, 100000).hex()
+        
+        return mpin_hash == wallet["mpin_hash"]
+
     async def identify_misdeployed_accounts(
         self,
         conn,
@@ -290,11 +315,14 @@ class WalletService:
         if not wallet:
             return None
 
-        account = await self.get_account_by_wallet(conn, dict(wallet)["wallet_id"])
+        wallet_dict = dict(wallet)
+        wallet_dict["has_mpin"] = bool(wallet_dict.get("mpin_hash"))
+
+        account = await self.get_account_by_wallet(conn, wallet_dict["wallet_id"])
 
         return {
             "user": dict(user),
-            "wallet": dict(wallet),
+            "wallet": wallet_dict,
             "account": dict(account) if account else None,
         }
 

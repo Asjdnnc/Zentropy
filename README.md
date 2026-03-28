@@ -14,11 +14,9 @@ During the first month, our focus was on integrating Post-Quantum Cryptography (
 - `Quantum_Algos_Windows/`: PQC Chat client and backend server logic built for Windows.
 
 ### Phase 1 Action Previews
-*(Add your Phase 1 PQC Chat images below)*
+**Demo Video:** [Watch Phase 1 in Action!](https://youtu.be/UmCzfXBDIvw)
 
-<!-- Placeholder for Phase 1 images -->
-![Phase 1 Image 1 Placeholder]()
-![Phase 1 Image 2 Placeholder]()
+[![Phase 1 Demo](https://img.youtube.com/vi/UmCzfXBDIvw/maxresdefault.jpg)](https://youtu.be/UmCzfXBDIvw)
 
 
 ---

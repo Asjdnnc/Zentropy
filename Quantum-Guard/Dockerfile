@@ -53,6 +53,11 @@ RUN apt-get update \
         libstdc++6 \
         libgcc-s1 \
         bash \
+        curl \
+    && curl https://get.starkli.sh | sh \
+    && /root/.starkli/bin/starkliup \
+    && cp /root/.starkli/bin/starkli /usr/local/bin/ \
+    && rm -rf /root/.starkli \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

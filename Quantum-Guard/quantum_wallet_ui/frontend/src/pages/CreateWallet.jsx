@@ -72,7 +72,7 @@ export default function CreateWallet() {
                             contract_address: walletRes.data?.contract_address,
                         });
                         return {
-                            label: userId,
+                            label: u.label || u.wallet_name || u.username || u.email || userId,
                             user_id: userId,
                             username: u.username || u.email || userId,
                             ...walletRes.data,
@@ -80,7 +80,7 @@ export default function CreateWallet() {
                     } catch {
                         debugLog("fetchWallets:wallet_load_failed", { user_id: userId });
                         return {
-                            label: userId,
+                            label: u.label || u.wallet_name || u.username || u.email || userId,
                             user_id: userId,
                             username: u.username || u.email || userId,
                             contract_address: null,

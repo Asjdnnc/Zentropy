@@ -67,8 +67,8 @@ export default function Landing() {
                             </p>
                             
                             <div className="flex items-center gap-4">
-                                <Link to="/" className="px-8 py-3.5 rounded-full border border-gray-700 text-[14px] font-medium text-gray-300 hover:bg-white hover:text-black transition-colors">
-                                    Contact Us
+                                <Link to="/dashboard" className="px-8 py-3.5 rounded-full border border-gray-700 text-[14px] font-medium text-gray-300 hover:bg-white hover:text-black transition-colors">
+                                   Dashboard
                                 </Link>
                                 <Link to="/signup" className="flex items-center pl-7 pr-1.5 py-1.5 rounded-full border border-gray-700 text-[14px] font-medium hover:border-gray-400 transition-colors group">
                                     <span className="mr-6 text-gray-300 group-hover:text-white transition-colors">Get Started</span>
@@ -97,7 +97,7 @@ export default function Landing() {
                             <span className="text-gray-500">Built for Starknet.</span>
                         </h2>
                         <p className="text-gray-400 text-lg max-w-2xl leading-relaxed">
-                            Quantum-Guard combines lattice-based cryptography with Starknet's architecture, ensuring your assets are mathematically immune to next-generation quantum threats while retaining zero-friction execution.
+                            Zentropy combines lattice-based cryptography with Starknet's architecture, ensuring your assets are mathematically immune to next-generation quantum threats while retaining zero-friction execution.
                         </p>
                     </div>
                     

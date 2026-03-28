@@ -169,15 +169,26 @@ export const listWallets = (limit = 50, offset = 0, options = {}) =>
 
 /**
  * Full transfer pipeline: sign → prove → batch → Starknet submit.
- * Body: { user_id or label, to_address, amount_strk }
+ * Body: { user_id or label, to_address, amount_strk, mpin }
  * (label is aliased to user_id for backwards compatibility)
  */
-export const executeTransfer = ({ user_id, label, to_address, amount_strk }) =>
+export const executeTransfer = ({ user_id, label, to_address, amount_strk, mpin }) =>
     api.post(`${V2}/transactions/transfer`, {
         user_id: ensureUserId(user_id || label, 'executeTransfer'),
         to_address,
         amount_strk,
+        mpin,
     });
+
+export const setMpin = (userId, mpin) => {
+    const uid = ensureUserId(userId, 'setMpin');
+    return api.post(`${V2}/users/${encodeURIComponent(uid)}/mpin`, { mpin });
+};
+
+export const verifyMpin = (userId, mpin) => {
+    const uid = ensureUserId(userId, 'verifyMpin');
+    return api.post(`${V2}/users/${encodeURIComponent(uid)}/mpin/verify`, { mpin });
+};
 
 // Alias for backwards compat with pages that call createTransfer
 export const createTransfer = executeTransfer;

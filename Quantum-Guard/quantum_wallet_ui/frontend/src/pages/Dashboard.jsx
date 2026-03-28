@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [showBalance, setShowBalance] = useState(true);
   const [activeTab, setActiveTab] = useState('Tokens');
   const [txWalletId, setTxWalletId] = useState("");
+  const [selectedWallet, setSelectedWallet] = useState(null);
 
   useEffect(() => {
     async function fetchAll() {
@@ -256,12 +257,17 @@ export default function Dashboard() {
                  <div className="text-center py-10 text-gray-500">No active accounts found. Navigate to '+ Add an account' to deploy.</div>
               ) : (
                 wallets.map((wallet, idx) => {
-                  const balStrk = parseFloat(balances[wallet.user_id]?.balance_display || "0");
+                  const balObj = balances[wallet.user_id];
+                  const balStrk = parseFloat(balObj?.balance_display || balObj?.balance_strk || "0");
                   const totalStrkFloat = totalBalance > 0 ? totalBalance : 1;
                   const percentage = ((balStrk / totalStrkFloat) * 100).toFixed(2);
                   
                   return (
-                    <div key={wallet.user_id} className="grid grid-cols-[3fr_1.5fr_1.5fr_1.5fr] gap-4 px-6 py-[18px] hover:bg-[#111] rounded-[14px] transition-colors items-center cursor-pointer border-b border-transparent hover:border-transparent">
+                    <div 
+                      key={wallet.user_id} 
+                      onClick={() => setSelectedWallet(wallet)}
+                      className="grid grid-cols-[3fr_1.5fr_1.5fr_1.5fr] gap-4 px-6 py-[18px] hover:bg-[#111] rounded-[14px] transition-colors items-center cursor-pointer border-b border-transparent hover:border-transparent"
+                    >
                       <div className="flex items-center gap-[18px]">
                         <div className="w-9 h-9 rounded-full bg-indigo-600 flex items-center justify-center relative flex-shrink-0 shadow-lg">
                            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 12h14"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5l7 7-7 7"></path></svg>
@@ -366,6 +372,94 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Wallet Detail Modal */}
+      {selectedWallet && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setSelectedWallet(null)}>
+              <div 
+                  className="w-full max-w-lg bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 shadow-2xl relative"
+                  onClick={e => e.stopPropagation()}
+              >
+                  <div className="flex justify-between items-start mb-6 pb-4 border-b border-[#1a1a1a]">
+                      <div>
+                          <h3 className="font-semibold text-white text-[18px] mb-1.5">{selectedWallet.wallet_name || selectedWallet.username || selectedWallet.label || selectedWallet.user_id}</h3>
+                          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-md tracking-wide ${selectedWallet.deployment_status === 'deployed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'}`}>
+                              {selectedWallet.deployment_status?.toUpperCase() || 'UNKNOWN'}
+                          </span>
+                      </div>
+                      <button
+                          onClick={() => setSelectedWallet(null)}
+                          className="p-2 rounded-xl bg-[#111] border border-[#222] text-gray-400 hover:text-white hover:bg-[#222] transition-colors duration-200"
+                      >
+                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                      </button>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                      <div className="p-4 bg-[#111] border border-[#222] rounded-xl flex items-center justify-between">
+                          <div>
+                              <span className="text-gray-500 block text-[11px] mb-1 font-medium tracking-wider uppercase">Balance</span>
+                              <div className="font-semibold text-[15px] text-white">
+                                  {balances[selectedWallet.user_id]?.balance_display || balances[selectedWallet.user_id]?.balance_strk || "0.0000"} STRK
+                              </div>
+                          </div>
+                          <div className="text-right">
+                              <span className="text-gray-500 block text-[11px] mb-1 font-medium tracking-wider uppercase">Fiat Value</span>
+                              <div className="font-semibold text-[15px] text-gray-300">
+                                  ${((parseFloat(balances[selectedWallet.user_id]?.balance_display || balances[selectedWallet.user_id]?.balance_strk || "0")) * strkPrice).toFixed(2)}
+                              </div>
+                          </div>
+                      </div>
+
+                      {selectedWallet.contract_address && (
+                          <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                              <span className="text-gray-500 block text-[11px] mb-2 font-medium tracking-wider uppercase">Contract Address</span>
+                              <div className="flex items-center gap-3">
+                                  <div className="font-mono text-[13px] text-gray-300 break-all flex-1">
+                                      {selectedWallet.contract_address}
+                                  </div>
+                                  <button onClick={(e) => {
+                                      navigator.clipboard.writeText(selectedWallet.contract_address);
+                                      const btn = e.currentTarget;
+                                      const oldHTML = btn.innerHTML;
+                                      btn.innerHTML = `<svg class="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`;
+                                      setTimeout(() => {
+                                          if (btn) btn.innerHTML = oldHTML;
+                                      }, 2000);
+                                  }} className="text-gray-400 hover:text-white transition-colors shrink-0 p-1" title="Copy Address">
+                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+                      
+                      {selectedWallet.public_key_hash && (
+                          <div className="p-4 bg-[#111] border border-[#222] rounded-xl">
+                              <span className="text-gray-500 block text-[11px] mb-2 font-medium tracking-wider uppercase">Identity Hash (ML-DSA-44)</span>
+                              <div className="font-mono text-[13px] text-blue-400 break-all">
+                                  {selectedWallet.public_key_hash}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+
+                  {selectedWallet.contract_address && (
+                      <a
+                          href={`https://sepolia.voyager.online/contract/${selectedWallet.contract_address}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-2 w-full py-3.5 bg-[#111] border border-[#222] rounded-[14px] text-gray-300 text-[14px] font-medium hover:bg-white hover:text-black transition-colors duration-200"
+                      >
+                          View on Voyager Explorer
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                      </a>
+                  )}
+              </div>
+          </div>
+      )}
+
     </div>
   );
 }

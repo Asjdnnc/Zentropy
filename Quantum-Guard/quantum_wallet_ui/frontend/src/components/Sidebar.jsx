@@ -66,6 +66,15 @@ export default function Sidebar() {
         </svg>
       ),
     },
+    // {
+    //   to: "/graph",
+    //   label: "Graph Status",
+    //   icon: (
+    //     <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    //       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+    //     </svg>
+    //   ),
+    // },
   ];
 
   return (
@@ -73,10 +82,10 @@ export default function Sidebar() {
       
       {/* Brand Header */}
       <div className="h-[72px] px-8 flex items-center gap-3 border-b border-[#1a1a1a]">
-        <div className="w-8 h-8 bg-white text-black flex items-center justify-center rounded-md font-extrabold text-[12px] tracking-tighter">Zen</div>
-        <h1 className="font-bold text-lg tracking-tight text-white mt-0.5">
+        <a href="/"><div className="w-8 h-8 bg-white text-black flex items-center justify-center rounded-md font-extrabold text-[12px] tracking-tighter">Zen</div></a>
+       <a href="/"> <h1 className="font-bold text-lg tracking-tight text-white mt-0.5">
           ZENTROPY
-        </h1>
+        </h1></a>
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-1">

@@ -14,6 +14,7 @@ import ReceiveTokens from "./pages/ReceiveTokens";
 import Transactions from "./pages/Transactions";
 import TransactionHistory from "./pages/TransactionHistory";
 import ProverStatus from "./pages/ProverStatus";
+import GraphStatus from "./pages/GraphStatus";
 
 function ProtectedPage({ children }) {
   if (!hasApiKey()) {
@@ -52,6 +53,7 @@ function App() {
             <Route path="/transactions" element={<ProtectedPage><Transactions /></ProtectedPage>} />
             <Route path="/history" element={<ProtectedPage><TransactionHistory /></ProtectedPage>} />
             <Route path="/prover" element={<ProtectedPage><ProverStatus /></ProtectedPage>} />
+            <Route path="/graph" element={<ProtectedPage><GraphStatus /></ProtectedPage>} />
             <Route path="*" element={<Navigate to={hasApiKey() ? "/dashboard" : "/login"} replace />} />
           </Routes>
         </Router>

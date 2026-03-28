@@ -22,7 +22,7 @@ export default function ReceiveTokens() {
                     try {
                         const walletRes = await getWalletInfo(userId);
                         return {
-                            label: userId,
+                            label: u.label || u.wallet_name || u.username || u.email || userId,
                             user_id: userId,
                             username: u.username || u.email || userId,
                             ...walletRes.data,

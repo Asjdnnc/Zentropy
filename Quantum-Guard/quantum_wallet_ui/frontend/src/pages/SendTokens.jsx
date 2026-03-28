@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo, setActiveUserId } from "../api/client";
+import { listWallets, getWalletBalance, executeTransfer, getTransferStatus, getWalletInfo, setActiveUserId, setMpin } from "../api/client";
 import { useWallet } from "../context/WalletContext";
 
 export default function SendTokens() {
@@ -23,6 +23,12 @@ export default function SendTokens() {
     const [pollTimedOut, setPollTimedOut] = useState(false);
     const pollAbortRef = useRef(null);
 
+    const [showMpinModal, setShowMpinModal] = useState(false);
+    const [mpinValue, setMpinValue] = useState("");
+    const [mpinFormError, setMpinFormError] = useState("");
+    const [isSettingMpin, setIsSettingMpin] = useState(false);
+    const [mpinAuthLoading, setMpinAuthLoading] = useState(false);
+
     const balanceText = (b) => b?.balance_display || b?.balance_strk || "0.000";
 
     const isAbortError = (err) =>
@@ -41,7 +47,7 @@ export default function SendTokens() {
                     try {
                         const walletRes = await getWalletInfo(userId, { signal: options.signal });
                         return {
-                            label: userId,
+                            label: u.label || u.wallet_name || u.username || u.email || userId,
                             user_id: userId,
                             username: u.username || u.email || userId,
                             ...walletRes.data,
@@ -138,33 +144,76 @@ export default function SendTokens() {
             return;
         }
 
-        setSending(true);
-        setPollTimedOut(false);
+        // Trigger MPIN auth/setup flow instead of sending directly
+        const currentWallet = wallets.find(w => w.user_id === form.user_id);
+        if (currentWallet) {
+            setIsSettingMpin(!currentWallet.has_mpin);
+            setMpinValue("");
+            setMpinFormError("");
+            setShowMpinModal(true);
+        } else {
+            setError("Wallet data not found");
+        }
+    }
+
+    async function handleMpinSubmit(e) {
+        e.preventDefault();
+        setMpinFormError("");
+
+        if (!/^\d{4,6}$/.test(mpinValue)) {
+            setMpinFormError("MPIN must be 4 to 6 digits.");
+            return;
+        }
+
+        setMpinAuthLoading(true);
 
         try {
+            if (isSettingMpin) {
+                // Set the MPIN first
+                await setMpin(form.user_id, mpinValue);
+                // Update local wallet model so we don't prompt setup next time
+                setWallets(wallets.map(w => w.user_id === form.user_id ? { ...w, has_mpin: true } : w));
+            }
+
+            // Temporarily flag as sending in the background
+            setSending(true);
+            setPollTimedOut(false);
+
             setActiveUserId(form.user_id);
+            const amount = parseFloat(form.amount_strk);
             const res = await executeTransfer({
                 user_id: form.user_id,
                 to_address: form.to_address,
                 amount_strk: amount,
+                mpin: mpinValue,
             });
+
+            if (res.data && res.data.error && res.data.status !== "submitted") {
+                throw new Error(res.data.error);
+            }
+
+            // Only close modal on successful initiation
+            setShowMpinModal(false);
             setResult(res.data);
 
             await refreshAll();
             await fetchWallets();
 
-            if (res.data.tx_id) {
+            if (res.data.status === "submitted" && res.data.tx_id) {
                 pollTxStatus(res.data.tx_id);
             }
         } catch (err) {
-            setError(
-                err.readableMessage ||
-                err.response?.data?.detail ||
-                err.message ||
-                "Transfer failed"
-            );
+            const errorMessage = err.readableMessage || err.response?.data?.detail || err.message || "Transfer failed";
+            // If it's an MPIN related error, keep the modal open and show error there
+            if (errorMessage.toLowerCase().includes("mpin")) {
+                setMpinFormError(errorMessage);
+            } else {
+                setError(errorMessage);
+                setShowMpinModal(false);
+            }
         } finally {
             setSending(false);
+            setMpinAuthLoading(false);
         }
     }
 
@@ -510,6 +559,64 @@ export default function SendTokens() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* MPIN Modal */}
+            {showMpinModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[24px] p-8 max-w-sm w-full shadow-2xl relative">
+                        <button
+                            onClick={() => setShowMpinModal(false)}
+                            className="absolute top-6 right-6 text-gray-400 hover:text-white transition"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+
+                        <h3 className="text-xl font-bold text-white mb-2">
+                            {isSettingMpin ? "Set Wallet MPIN" : "Authorize Transfer"}
+                        </h3>
+                        <p className="text-gray-400 text-sm mb-6">
+                            {isSettingMpin 
+                                ? "Create a 4-6 digit MPIN to secure transactions from this wallet."
+                                : "Enter your MPIN to sign and send this transaction."}
+                        </p>
+
+                        <form onSubmit={handleMpinSubmit} className="space-y-6">
+                            <div>
+                                <input
+                                    type="password"
+                                    autoFocus
+                                    inputMode="numeric"
+                                    maxLength={6}
+                                    value={mpinValue}
+                                    onChange={(e) => setMpinValue(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="Enter MPIN"
+                                    className="w-full bg-[#111] border border-[#222] focus:border-[#444] rounded-xl px-4 py-3.5 text-center text-2xl tracking-[0.5em] text-white placeholder-gray-600 font-mono outline-none transition-all"
+                                />
+                                {mpinFormError && (
+                                    <p className="text-red-400 text-sm mt-2 font-medium">{mpinFormError}</p>
+                                )}
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={mpinValue.length < 4 || mpinAuthLoading}
+                                className="w-full flex items-center justify-center py-4 rounded-[16px] bg-white text-black text-[15px] font-semibold hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+                            >
+                                {mpinAuthLoading ? (
+                                    <span className="flex items-center gap-2">
+                                        <svg className="animate-spin h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                        Processing...
+                                    </span>
+                                ) : (
+                                    isSettingMpin ? "Set MPIN & Send" : "Confirm & Send"
+                                )}
+                            </button>
+                        </form>
                     </div>
                 </div>
             )}

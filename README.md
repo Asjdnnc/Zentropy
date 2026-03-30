@@ -21,7 +21,7 @@ During the first month, our focus was on integrating Post-Quantum Cryptography (
 
 ---
 
-## Phase 2: Zentropy (Quantum-Guard)
+## Phase 2: Zentropy
 **Timeline:** Month 2
 
 In the second month, we expanded our vision into Phase 2, known as **Zentropy**. The primary application, `Quantum-Guard`, builds upon the quantum-safe foundations laid in Phase 1 to provide a more holistic suite of next-generation security tools.

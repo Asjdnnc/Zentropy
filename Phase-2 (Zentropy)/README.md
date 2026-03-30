@@ -1,4 +1,4 @@
-# Phase 2: Zentropy (Quantum-Guard)
+# Phase 2: Zentropy
 
 Welcome to **Phase 2: Zentropy**. Building upon the quantum-safe foundations laid in Phase 1, Zentropy expands into a more holistic suite of next-generation security tools, emphasizing the convergence of Post-Quantum Cryptography (PQC) and Zero-Knowledge (ZK) proofs.
 

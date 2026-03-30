@@ -38,4 +38,4 @@ In the second month, we expanded our vision into Phase 2, known as **Zentropy**.
 ---
 
 ### Getting Started
-To get started, navigate into the respective folder of the phase or client you are interested in and follow the individual setup instructions provided within them.
+To get started, please checkout our documentation for phase 2 - https://zentropy-docs.vercel.app.

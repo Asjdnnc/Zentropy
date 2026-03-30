@@ -22,5 +22,4 @@ This directory serves as the core codebase for Phase 2. Below is an overview of 
 
 Watch Phase 2 in Action!
 
-<!-- Please add your actual Phase 2 Zentropy demo video link/thumbnail here later! -->
-[**Video Placeholder - Link to come**]()
+[![Phase 2 Demo](https://img.youtube.com/vi/8zrL9oHKOkk/maxresdefault.jpg)](https://youtu.be/8zrL9oHKOkk)

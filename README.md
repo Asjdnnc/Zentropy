@@ -24,10 +24,16 @@ During the first month, our focus was on integrating Post-Quantum Cryptography (
 ## Phase 2: Zentropy
 **Timeline:** Month 2
 
-In the second month, we expanded our vision into Phase 2, known as **Zentropy**. The primary application, `Quantum-Guard`, builds upon the quantum-safe foundations laid in Phase 1 to provide a more holistic suite of next-generation security tools.
+In the second month, we expanded our vision into Phase 2, known as **Zentropy**. The primary application, builds upon the quantum-safe foundations laid in Phase 1 to provide a more holistic suite of next-generation security tools.
 
 ### Folder Structure
-- `Quantum-Guard/`: The core codebase and central hub for all Phase 2 Zentropy development.
+- `Phase-2 (Zentropy)/`: The core codebase and central hub for all Phase 2 Zentropy development. It consists of the following key directories:
+  - `quantum_wallet_ui/`: Frontend application and user interface for the quantum-safe wallet.
+  - `pqc_backend/`: Backend server implementing Post-Quantum Cryptography logic and APIs.
+  - `zk_prover/`: Zero-Knowledge Proof generator and prover components.
+  - `starknet_contracts/`: Starknet Layer-2 smart contract implementations.
+  - `docker/`: Docker containerization and deployment configurations.
+  - `scripts/`: Utility scripts for automation, building, and deployment.
 
 ### Phase 2 Action Previews
 **Demo Video:** [Watch Phase 2 in Action!](https://youtu.be/8zrL9oHKOkk)

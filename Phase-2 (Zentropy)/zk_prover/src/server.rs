@@ -38,6 +38,7 @@ pub async fn run_server(port: u16) -> std::io::Result<()> {
 
     HttpServer::new(|| {
         App::new()
+            .wrap(actix_web::middleware::Logger::default())
             .route("/verify", web::post().to(verify_handler))
             .route("/health", web::get().to(health_handler))
     })

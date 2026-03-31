@@ -227,6 +227,9 @@ export const forceCommitBatch = () =>
     api.post(`${V2}/batches/force-finalize`);
 
 // ─── Contract / Prover status ───────────────────────────────────
+export const getSystemTelemetry = (options = {}) =>
+    api.get(`${V2}/system/telemetry`, { signal: options.signal });
+
 // v2 exposes no dedicated /contract/status; health endpoint covers it.
 export const getContractStatus = (options = {}) =>
     getHealth(options).then((res) => ({

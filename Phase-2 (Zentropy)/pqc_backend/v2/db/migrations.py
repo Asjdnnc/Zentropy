@@ -224,8 +224,16 @@ async def run_migrations():
     logger.info("Running database migrations …")
 
     async with get_db() as conn:
+        from .connection import _get_database_url
+        is_pg = _get_database_url().startswith("postgres")
+
+        # Automatically translate SQLite syntax to Postgres syntax
+        schema = _SCHEMA_SQL
+        if is_pg:
+            schema = schema.replace("log_id              INTEGER PRIMARY KEY,", "log_id              SERIAL PRIMARY KEY,")
+
         # Split by statement and execute individually for SQLite compat
-        stmts = [s.strip() for s in _SCHEMA_SQL.split(";") if s.strip()]
+        stmts = [s.strip() for s in schema.split(";") if s.strip()]
         for stmt in stmts:
             try:
                 await conn.execute(stmt)
@@ -236,5 +244,15 @@ async def run_migrations():
                     continue
                 logger.error("Migration statement failed: %s\n  Error: %s", stmt[:80], e)
                 raise
+
+        # Quick fix for existing deployments that already created the table without SERIAL
+        if is_pg:
+            try:
+                await conn.execute("""
+                    CREATE SEQUENCE IF NOT EXISTS audit_log_id_seq;
+                    ALTER TABLE audit_log ALTER COLUMN log_id SET DEFAULT nextval('audit_log_id_seq');
+                """)
+            except Exception as e:
+                logger.warning("Sequence patch failed (might already be fixed): %s", e)
 
     logger.info("Database migrations complete — all tables ready")

@@ -60,7 +60,7 @@ router = APIRouter(prefix="/api/v2", tags=["QuantumGuard v2"])
 _key_svc = KeyService()
 _audit_svc = AuditService()
 _wallet_svc = WalletService(key_service=_key_svc, audit_service=_audit_svc)
-_merkle_svc = MerkleService(audit_service=_audit_svc)
+_merkle_svc = MerkleService(batch_size=10, batch_interval=1.0, audit_service=_audit_svc)
 _tx_svc = TransactionService(
     key_service=_key_svc, audit_service=_audit_svc, merkle_service=_merkle_svc
 )
@@ -783,3 +783,8 @@ async def health():
         prover_binary=prover_binary,
         prover_endpoint=prover_endpoint,
     )
+
+@router.get("/system/telemetry")
+async def get_system_telemetry():
+    from ..services.transaction_service import prover_telemetry_logs
+    return {"logs": list(prover_telemetry_logs)}

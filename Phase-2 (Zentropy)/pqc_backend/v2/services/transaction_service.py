@@ -27,6 +27,7 @@ import re
 import subprocess
 import time
 import uuid
+from collections import deque
 from typing import Any, Callable, Optional
 
 import httpx
@@ -43,6 +44,23 @@ logger = logging.getLogger("quantumguard.tx_service")
 ERC20_TRANSFER_EVENT_SELECTOR = (
     "0x0099cd8bde557814842a3121e8ddfd433a539b8c9f14bf31ebf108d12e6196e9"
 )
+
+# Global in-memory log buffer for the Live Prover Telemetry UI
+prover_telemetry_logs = deque(maxlen=20)
+
+def push_telemetry(msg: str, level: str = "INFO"):
+    from datetime import datetime
+    colors = {
+        "INFO": "blue",
+        "WARN": "yellow",
+        "SUCCESS": "green",
+        "MERKLE": "purple",
+        "ERROR": "red"
+    }
+    color = colors.get(level, "gray")
+    ts = datetime.utcnow().strftime("%H:%M:%S")
+    formatted = f"<span class='text-gray-500 mr-3'>[{ts}]</span><span class='text-{color}-400'>[{level}]</span> {msg}"
+    prover_telemetry_logs.append(formatted)
 
 
 class TransactionService:
@@ -459,19 +477,38 @@ class TransactionService:
     ) -> dict:
         timeout = float(os.environ.get("PROVER_TIMEOUT_SECONDS", "8"))
         endpoint = f"{prover_url.rstrip('/')}/verify"
+        
+        sig_size = len(signature)
+        push_telemetry(f"Routing ML-DSA-44 payload to Rust Co-Processor...", "INFO")
+        push_telemetry(f"Ingesting raw payload (Size: {sig_size} bytes).", "WARN")
+
         payload = {
             "message": base64.b64encode(message).decode(),
             "signature": base64.b64encode(signature).decode(),
             "public_key": base64.b64encode(public_key).decode(),
         }
+        
+        start_time = time.time()
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(endpoint, json=payload)
             response.raise_for_status()
+        
+        elapsed = (time.time() - start_time) * 1000
         proof = response.json()
+        
         if not isinstance(proof, dict):
+            push_telemetry("Invalid prover response payload", "ERROR")
             raise RuntimeError("Invalid prover response payload")
         if "valid" not in proof or "proof_commitment" not in proof:
+            push_telemetry("Incomplete prover response", "ERROR")
             raise RuntimeError("Incomplete prover response")
+            
+        if proof.get("valid"):
+            push_telemetry(f"Signature Valid. O(1) Proof Gen Time: {elapsed:.2f}ms.", "SUCCESS")
+            push_telemetry(f"Hashing leaf into Merkle batch pool...", "MERKLE")
+        else:
+            push_telemetry("Rust Prover rejected mathematical signature natively.", "ERROR")
+            
         return proof
 
     async def _submit_to_starknet(

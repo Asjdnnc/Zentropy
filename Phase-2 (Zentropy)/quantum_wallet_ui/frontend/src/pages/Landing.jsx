@@ -34,6 +34,7 @@ export default function Landing() {
                                 <Link to="https://github.com/Asjdnnc/Zentropy" className="hover:text-white transition-colors">Github</Link>
                                 <Link to="https://zentropy-docs.vercel.app" className="hover:text-white transition-colors">Docs</Link>
                                 <Link to="https://openquantumsafe.org/liboqs/" className="hover:text-white transition-colors">Resources</Link>
+                                <Link to="https://www.youtube.com/watch?v=8zrL9oHKOkk&t" className="hover:text-white transition-colors text-blue-400">Demo</Link>
                             </div>
                         </nav>
                         <Link to="/login" className="hidden sm:inline-flex px-7 py-3 rounded-full border border-gray-700 text-[13px] font-semibold text-gray-300 hover:text-white hover:border-white transition-colors">

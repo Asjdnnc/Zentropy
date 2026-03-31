@@ -109,9 +109,18 @@ fn cmd_verify() {
 // ─── Serve command (HTTP server) ───────────────────────────────────
 
 fn cmd_serve(port: u16) {
+    std::env::set_var("RUST_LOG", "actix_web=info,quantum_prover=info");
+    env_logger::init();
+
+    // Render dynamically injects a PORT environment variable. We MUST bind to it.
+    let actual_port = std::env::var("PORT")
+        .unwrap_or_else(|_| port.to_string())
+        .parse::<u16>()
+        .unwrap_or(port);
+
     let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     rt.block_on(async {
-        quantum_prover::server::run_server(port)
+        quantum_prover::server::run_server(actual_port)
             .await
             .expect("Server failed");
     });

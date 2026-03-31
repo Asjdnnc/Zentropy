@@ -11,6 +11,7 @@ oqs = { version = "0.11", features = ["sigs"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+env_logger = "0.10"
 
 # Hashing (SHA-256 for proof commitments)
 sha2 = "0.10"

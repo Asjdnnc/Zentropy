@@ -101,6 +101,12 @@ export default function Signup() {
                             required
                             className="w-full bg-[#111] border border-[#222] focus:border-[#444] rounded-xl px-4 py-3.5 text-[14px] text-white placeholder-gray-600 outline-none transition-all"
                         />
+                        <p className="text-[12px] text-gray-500 mt-2 ml-1 text-center sm:text-left">
+                            If you don't have the secret please{" "}
+                            <a href="https://zentropy-docs.vercel.app/ZENTROPY_ANALYSIS#bootstrap-secret" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 font-medium transition-colors underline underline-offset-2">
+                                click here
+                            </a>
+                        </p>
                     </div>
 
                     {error && (

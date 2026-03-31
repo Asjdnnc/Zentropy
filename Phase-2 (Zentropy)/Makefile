@@ -8,7 +8,7 @@
 #   make test-all       Run all tests
 #   make run-v2-api     Start the v2 API server
 #   make run-prover     Start the Rust prover server
-#   make clean          Clean build artifacts
+#   make clean          Clean build artifactss
 
 SHELL := /bin/bash
 .PHONY: setup test-phase2 build-phase2 build-phase3 test-phase3 test-all run-prover clean check-liboqs deploy-contract frontend-dev frontend-build frontend-smoke docker-build docker-up docker-down docker-logs docker-prod-build docker-prod-up docker-prod-down docker-prod-logs env-init env-init-prod smoke-v2-transfer run-v2-api test-v2 test-v2-integration

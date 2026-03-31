@@ -1,6 +1,19 @@
 services:
   - type: web
+    name: quantum-guard-prover
+    rootDir: Quantum-Guard
+    plan: free
+    env: docker
+    dockerfilePath: ./Dockerfile.prover
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8001"
+
+  - type: web
     name: quantum-guard-backend
+    rootDir: Quantum-Guard
+    plan: free
     env: docker
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/v2/health
@@ -9,10 +22,8 @@ services:
         value: production
       - key: API_HOST
         value: 0.0.0.0
-      - key: PROVER_PORT
-        value: "8001"
       - key: PROVER_URL
-        value: http://localhost:8001
+        value: https://quantum-guard-prover.onrender.com
       - key: LOG_LEVEL
         value: INFO
       - key: RATE_LIMIT_RPM
@@ -20,13 +31,13 @@ services:
       - key: STARKNET_CHAIN_ID
         value: SN_SEPOLIA
       - key: STARKNET_RPC
-        value: https://free-rpc.nethermind.io/sepolia-juno/v0_7
+        value: https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_8/kgLyrFj6uapYvZoWP3Ywv
       - key: DATABASE_URL
         fromDatabase:
           name: quantum-guard-postgres
           property: connectionString
       - key: CORS_ORIGINS
-        value: https://zentropy-steel.vercel.app,https://zentropy-private.vercel.app,https://zentropy-private.onrender.com
+        value: https://zentropy-steel.vercel.app,https://zentropy-private.onrender.com,https://zentropywallet.vercel.app
       - key: MERKLE_STORAGE_DIR
         value: /tmp/merkle_batches
       - key: PYTHON_DOTENV_DISABLED
@@ -42,5 +53,6 @@ services:
 
 databases:
   - name: quantum-guard-postgres
+    plan: free
     databaseName: quantumguard
     user: quantumguard
